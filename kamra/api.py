@@ -3443,7 +3443,7 @@ def send_precheckin_link(reservation: str, channel: str = "WhatsApp"):
 		frappe.db.set_value("Reservation", reservation, "precheckin_token",
 		                    res.precheckin_token)
 
-	link = f"{frappe.utils.get_url()}/kamra/checkin/{res.precheckin_token}"
+	link = f"{frappe.utils.get_url()}/hotel/checkin/{res.precheckin_token}"
 	phone = frappe.db.get_value("Guest", res.guest, "phone") if res.guest else None
 	sent = False
 	if phone:

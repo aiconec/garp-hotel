@@ -813,7 +813,7 @@ export default function Setup() {
                   )}
                 </p>
                 <a
-                  href="/kamra/marketplace"
+                  href="/hotel/marketplace"
                   className="mt-2 inline-block text-sm font-medium text-brand-700 hover:underline"
                 >
                   {t("Open Marketplace → HeyKoala WhatsApp")}

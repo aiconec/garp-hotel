@@ -21,7 +21,8 @@ from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 from kamra import __version__ as KAMRA_VERSION
 from kamra.authz import require_roles
 
-GITHUB_REPO = "Kamra-PMS/kamra-pms"
+# GARP Hotel: update checks follow our fork, not upstream Kamra releases.
+GITHUB_REPO = "aiconec/garp-hotel"
 GITHUB_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES = f"https://github.com/{GITHUB_REPO}/releases"
 CACHE_KEY = "kamra:github_latest_release"
@@ -161,7 +162,7 @@ def _frappe_check() -> dict:
 	major = int(str(ver).split(".")[0]) if str(ver)[0:1].isdigit() else 0
 	if major and major < 16:
 		status = "attention"
-		detail = f"Frappe {ver} — Kamra targets Frappe v16."
+		detail = f"Frappe {ver} — GARP Hotel targets Frappe v16."
 	else:
 		status = "passed"
 		detail = f"Frappe {ver}."
@@ -210,7 +211,7 @@ def _timezone_check() -> dict:
 			"attention",
 			f"Property timezone differs from site ({site_tz}). "
 			"Set Time zone under Admin → Settings → Property.",
-			link="/kamra/settings",
+			link="/hotel/settings",
 		)
 	return _check(
 		"timezone",
@@ -270,19 +271,18 @@ def _version_check(latest: dict) -> dict:
 
 def _upgrade_payload() -> dict:
 	return {
-		"docs": "https://kamrapms.com/docs/self-hosting/",
+		"docs": "https://github.com/aiconec/garp-hotel/blob/develop/docs/self-hosting.md",
 		"releases": GITHUB_RELEASES,
 		"docker_latest": "ghcr.io/kamra-pms/kamra:latest",
 		"docker_nightly": "ghcr.io/kamra-pms/kamra:nightly",
 		"bench": (
-			"bench get-app kamra https://github.com/Kamra-PMS/kamra-pms "
-			"--branch main && bench --site <site> migrate && bench build "
+			"bench get-app kamra https://github.com/aiconec/garp-hotel "
+			"--branch develop && bench --site <site> migrate && bench build "
 			"--app kamra && bench restart"
 		),
 		"note": (
-			"Kamra does not auto-upgrade the site from this screen. "
-			"Self-host: pull the new image or bench update, then migrate. "
-			"Frappe Cloud: create a Marketplace release from main."
+			"GARP Hotel does not auto-upgrade the site from this screen. "
+			"On GARP the platform ships new versions; ask GARP support."
 		),
 	}
 

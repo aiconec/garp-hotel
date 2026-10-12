@@ -20,8 +20,8 @@ from kamra.llm_compat import chat_payload, retry_chat_payload
 MAX_TOOL_ROUNDS = 6
 TIMEOUT = 60
 
-SYSTEM = """You are Kamra Agent, the assistant for {property_name}, a hotel
-running Kamra PMS. Today is {today}. You help staff work faster: look
+SYSTEM = """You are GARP Hotel Agent, the assistant for {property_name}, a hotel
+running GARP Hotel. Today is {today}. You help staff work faster: look
 things up, quote, book, check guests in and out, post charges, take
 payments, preview and process cancellations.
 
@@ -517,7 +517,7 @@ def test_connection(property: str, base_url: str | None = None,
 		frappe.throw(
 			"That looks like an Anthropic / Claude API key. This chat uses "
 			"OpenAI-compatible Chat Completions only. Use Connect Claude "
-			"(MCP) on Kamra Agent, or put Claude behind OpenRouter.")
+			"(MCP) on GARP Hotel Agent, or put Claude behind OpenRouter.")
 
 	base = (base_url or (s.base_url if s else None)
 	        or "https://api.openai.com/v1").rstrip("/")
@@ -813,12 +813,12 @@ def ask_stream(property: str, messages):
 	})
 
 
-HELP_SYSTEM = """You are the Kamra PMS help assistant. You explain HOW to use
-Kamra - an open-source, AI-native hotel PMS - to hotel staff. You do NOT act on
-hotel data (Kamra Agent does that); you give short, concrete how-to
+HELP_SYSTEM = """You are the GARP Hotel help assistant. You explain HOW to use
+GARP Hotel - an AI-native hotel PMS - to hotel staff. You do NOT act on
+hotel data (GARP Hotel Agent does that); you give short, concrete how-to
 answers and point to where things live in the app.
 
-What Kamra does and where to find it:
+What GARP Hotel does and where to find it:
 - Front desk: "Today" (arrivals, departures, in-house, room board, check in /
   out), Tape Chart (rooms × dates; move rooms, amend stays), Calendar
   (availability).
@@ -833,7 +833,7 @@ What Kamra does and where to find it:
 - Billing: folios, post charges, take payments, payment links. Closing a folio
   assigns a GST tax invoice (logo, GSTIN, place of supply, SAC 996311).
 - Reports: occupancy, ADR, RevPAR, RevPAX, MTD, collections, 14-day trend.
-- Housekeeping: room board + a phone app at /kamra/hk.
+- Housekeeping: room board + a phone app at /hotel/hk.
 - Revenue: rate plans, seasons, vouchers, rate guardrails.
 - Events: Venue Bookings and a Venue Calendar (banquet/function diary);
   Experiences cover spa/tours as booking add-ons.
@@ -846,12 +846,12 @@ What Kamra does and where to find it:
 - Roles: a System Admin (IT - users, API keys, Frappe Desk) versus a Hotel
   Admin / GM (runs the property, no IT access). Manage staff from
   Admin → Manage Users.
-- Kamra Agent (the sparkle button) can act - quote, book, check in,
+- GARP Hotel Agent (the sparkle button) can act - quote, book, check in,
   post charges, cancel, and watch the waitlist. This help assistant only
   explains how to do things yourself.
 
 Be brief and practical. Use short steps. If you're unsure, say so and point to
-the docs (github.com/Kamra-PMS/kamra-pms/tree/main/docs)."""
+the docs (github.com/aiconec/garp-hotel/tree/develop/docs)."""
 
 
 @frappe.whitelist(methods=["POST"])

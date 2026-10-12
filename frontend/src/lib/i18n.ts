@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { getLang, type Lang } from "./dir"
 import ar from "../i18n/locales/ar.json"
+import { rebrand } from "./brand"
 
 /** Locale dictionaries keyed by English source string. Missing keys fall back
  * to English so the app never blanks as coverage expands. */
@@ -23,13 +24,13 @@ function interpolate(template: string, vars?: Vars): string {
 /** Translate an English string for the current language (falls back to it). */
 export function t(s: string, vars?: Vars): string {
   const dict = DICT[getLang()] ?? {}
-  return interpolate(dict[s] ?? s, vars)
+  return rebrand(interpolate(dict[s] ?? s, vars))
 }
 
 /** Translate for a specific language (e.g. offline export). */
 export function tFor(lang: Lang, s: string, vars?: Vars): string {
   const dict = DICT[lang] ?? {}
-  return interpolate(dict[s] ?? s, vars)
+  return rebrand(interpolate(dict[s] ?? s, vars))
 }
 
 /** Subscribe a component to the language: re-renders on change, returns a
@@ -44,7 +45,7 @@ export function useT() {
   const t = useCallback(
     (s: string, vars?: Vars) => {
       const dict = DICT[lang] ?? {}
-      return interpolate(dict[s] ?? s, vars)
+      return rebrand(interpolate(dict[s] ?? s, vars))
     },
     [lang],
   )
