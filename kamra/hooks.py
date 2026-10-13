@@ -98,15 +98,15 @@ website_route_rules = [
 
 # Clean, shareable guest URLs redirect into the SPA's routes.
 website_redirects = [
-	{"source": r"/book$", "target": "/hotel/book"},
-	{"source": r"/book/(.*)", "target": r"/hotel/book/\1"},
-	{"source": r"/stay$", "target": "/hotel/stay"},
-	{"source": r"/stay/(.*)", "target": r"/hotel/stay/\1"},
-	{"source": r"/hk$", "target": "/hotel/hk"},
-	{"source": r"/checkin/(.*)", "target": r"/hotel/checkin/\1"},
+	{"source": r"/book$", "target": "/hotel/book", "forward_query_parameters": True},
+	{"source": r"/book/(.*)", "target": r"/hotel/book/\1", "forward_query_parameters": True},
+	{"source": r"/stay$", "target": "/hotel/stay", "forward_query_parameters": True},
+	{"source": r"/stay/(.*)", "target": r"/hotel/stay/\1", "forward_query_parameters": True},
+	{"source": r"/hk$", "target": "/hotel/hk", "forward_query_parameters": True},
+	{"source": r"/checkin/(.*)", "target": r"/hotel/checkin/\1", "forward_query_parameters": True},
 	# GARP Hotel: old /kamra links (bookmarks, sent check-in links) land on /hotel.
-	{"source": r"/kamra$", "target": "/hotel"},
-	{"source": r"/kamra/(.*)", "target": r"/hotel/\1"},
+	{"source": r"/kamra$", "target": "/hotel", "forward_query_parameters": True},
+	{"source": r"/kamra/(.*)", "target": r"/hotel/\1", "forward_query_parameters": True},
 ]
 
 # Each item in the list will be shown as an app in the apps page
