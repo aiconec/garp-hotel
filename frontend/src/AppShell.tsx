@@ -306,9 +306,9 @@ export default function AppShell() {
         <div className="mb-5 flex items-center gap-2 px-1">
           <img src={asset("kamra-mark.svg")} alt="" className="size-7" aria-hidden />
           <span className="text-lg font-semibold tracking-tight">
-            kamra
+            GARP
             <span className="ml-1 align-middle text-[10px] font-semibold tracking-[0.2em] text-brand-600">
-              PMS
+              HOTEL
             </span>
           </span>
         </div>
