@@ -987,7 +987,7 @@ function AiAssistantCard({
         )}
         <p className="text-xs text-zinc-400">
           {t("Want Claude the app?")}{" "}
-          <a href="/kamra/assistant" className="font-medium text-brand-700 hover:underline">
+          <a href="/hotel/assistant" className="font-medium text-brand-700 hover:underline">
             {t("Kamra Agent → Connect your AI")}
           </a>
           . {t("Want Claude the model in this chat? Use the OpenRouter preset.")}
@@ -1171,7 +1171,7 @@ export default function Settings() {
             <CardTitle>Agent access (MCP)</CardTitle>
             <p className="mt-0.5 text-xs text-zinc-400">
               Connect Claude to this property's governed tool layer. Staff
-              click Connect Claude on Kamra Agent — no API keys on a laptop.
+              click Connect Claude on GARP Hotel Agent — no API keys on a laptop.
               Every agent action lands in the Agent Action Log.
             </p>
           </div>
@@ -1179,13 +1179,13 @@ export default function Settings() {
         <CardContent className="space-y-3 text-sm">
           <p className="text-zinc-600">
             Open{" "}
-            <a href="/kamra/assistant" className="font-medium text-brand-700 hover:underline">
-              Kamra Agent → Connect your AI
+            <a href="/hotel/assistant" className="font-medium text-brand-700 hover:underline">
+              GARP Hotel Agent → Connect your AI
             </a>{" "}
             and click <strong>Connect Claude</strong>. Claude opens with this
             hotel&apos;s MCP URL filled in; confirm, sign in as yourself, done.
             Service keys for unattended agents stay on{" "}
-            <a href="/kamra/developers" className="font-medium text-brand-700 hover:underline">
+            <a href="/hotel/developers" className="font-medium text-brand-700 hover:underline">
               Developers
             </a>
             .

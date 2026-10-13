@@ -6,11 +6,12 @@ import { Button } from "../components/ui/button"
 import { getSiteInfo } from "../lib/siteInfo"
 import { LANGS, getLang, setLang, type Lang } from "../lib/dir"
 import { useT } from "../lib/i18n"
+import { BRAND_NAME, SOURCE_URL, UPSTREAM_NAME } from "../lib/brand"
 
 const inputCls =
   "w-full rounded border border-[#E2E8F0] bg-[#ffffff] px-3 py-2 text-sm " +
   "text-[#191c1e] placeholder:text-[#6f7a71] " +
-  "focus:outline-2 focus:outline-offset-1 focus:outline-[#1E7B4F]"
+  "focus:outline-2 focus:outline-offset-1 focus:outline-[#6D28D9]"
 
 const DEMO_ACCOUNTS = [
   { label: "System Admin", usr: "admin@kamra.local", pwd: "KamraAdmin1!" },
@@ -66,7 +67,7 @@ export default function Login(props: { onSuccess: () => void }) {
       className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#f7f9fb] px-4"
       style={{ colorScheme: "light" }}
     >
-      <div className="fixed inset-x-0 top-0 h-[5px] bg-[#1C3F38]" aria-hidden />
+      <div className="fixed inset-x-0 top-0 h-[5px] bg-[#2E1065]" aria-hidden />
       <div className="w-full max-w-sm">
         {sessionEnded && (
           <p className="mb-4 rounded border border-[#fde68a] bg-[#fffbeb] px-4 py-2.5 text-center text-sm text-[#92400e]">
@@ -74,14 +75,14 @@ export default function Login(props: { onSuccess: () => void }) {
           </p>
         )}
         <div className="mb-6 flex flex-col items-center gap-2">
-          <img src={asset("kamra-mark.svg")} alt="Kamra" className="size-16" />
+          <img src={asset("kamra-mark.svg")} alt={BRAND_NAME} className="size-16" />
           <span
-            className="text-2xl font-semibold tracking-[0.02em] text-[#1C3F38]"
+            className="text-2xl font-semibold tracking-[0.02em] text-[#2E1065]"
             style={{ fontFamily: "Montserrat, ui-sans-serif, system-ui, sans-serif" }}
           >
-            kamra
-            <span className="ml-1.5 align-middle text-[10px] font-semibold tracking-[0.4em] text-[#1E7B4F]">
-              PMS
+            GARP
+            <span className="ml-1.5 align-middle text-[10px] font-semibold tracking-[0.4em] text-[#6D28D9]">
+              HOTEL
             </span>
           </span>
           <label className="mt-1 flex items-center gap-2 text-xs text-[#6f7a71]">
@@ -148,7 +149,7 @@ export default function Login(props: { onSuccess: () => void }) {
           )}
 
           <Button
-            className="w-full justify-center rounded bg-[#1E7B4F] py-2 text-white hover:bg-[#00613a] focus-visible:outline-[#1E7B4F]"
+            className="w-full justify-center rounded bg-[#6D28D9] py-2 text-white hover:bg-[#5B21B6] focus-visible:outline-[#6D28D9]"
             disabled={busy || !usr || !pwd}
             type="submit"
           >
@@ -170,7 +171,7 @@ export default function Login(props: { onSuccess: () => void }) {
                 key={a.usr}
                 disabled={busy}
                 onClick={() => submit(a.usr, a.pwd)}
-                className="rounded border border-[#E2E8F0] bg-[#ffffff] px-2 py-1.5 text-xs font-medium text-[#3f4941] hover:border-[#1E7B4F] hover:text-[#00613a]"
+                className="rounded border border-[#E2E8F0] bg-[#ffffff] px-2 py-1.5 text-xs font-medium text-[#3f4941] hover:border-[#6D28D9] hover:text-[#5B21B6]"
               >
                 {t(a.label)}
               </button>
@@ -178,11 +179,12 @@ export default function Login(props: { onSuccess: () => void }) {
           </div>
         </div>
         )}
-        {version && (
-          <p className="mt-6 text-center text-[11px] text-[#6f7a71]">
-            Kamra PMS v{version}
-          </p>
-        )}
+        <p className="mt-6 text-center text-[11px] text-[#6f7a71]">
+          {BRAND_NAME}{version && ` v${version}`} · {t("Based on")} {UPSTREAM_NAME} ·{" "}
+          <a href={SOURCE_URL} className="underline underline-offset-2 hover:text-[#3f4941]">
+            {t("AGPL-3.0 source")}
+          </a>
+        </p>
       </div>
     </div>
   )

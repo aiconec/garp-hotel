@@ -1,5 +1,5 @@
 app_name = "kamra"
-app_title = "Kamra"
+app_title = "GARP Hotel"
 app_publisher = "HeyKoala"
 app_description = (
 	"Open-source, AI-native hotel PMS — front desk, direct booking, "
@@ -12,7 +12,7 @@ app_license = "agpl-3.0"
 # Branding shown in the Desk navbar, app switcher and marketplace listing.
 app_logo_url = "/assets/kamra/kamra-mark.svg"
 app_icon = "octicon octicon-home"
-app_color = "#1E7B4F"
+app_color = "#6D28D9"
 
 # The product UI is the React SPA at /kamra; surface it in the Apps launcher
 # (and the /apps grid) so users land on it instead of the Desk.
@@ -20,8 +20,8 @@ add_to_apps_screen = [
 	{
 		"name": "kamra",
 		"logo": "/assets/kamra/kamra-mark.svg",
-		"title": "Kamra",
-		"route": "/kamra",
+		"title": "GARP Hotel",
+		"route": "/hotel",
 	}
 ]
 
@@ -91,16 +91,22 @@ kamra_localization = {
 # injected; every deep link falls through to it so browser refresh works.
 website_route_rules = [
 	{"from_route": "/kamra/<path:app_path>", "to_route": "kamra"},
+	# GARP Hotel serves the SPA at /hotel; the www page stays `kamra`.
+	{"from_route": "/hotel", "to_route": "kamra"},
+	{"from_route": "/hotel/<path:app_path>", "to_route": "kamra"},
 ]
 
 # Clean, shareable guest URLs redirect into the SPA's routes.
 website_redirects = [
-	{"source": r"/book$", "target": "/kamra/book"},
-	{"source": r"/book/(.*)", "target": r"/kamra/book/\1"},
-	{"source": r"/stay$", "target": "/kamra/stay"},
-	{"source": r"/stay/(.*)", "target": r"/kamra/stay/\1"},
-	{"source": r"/hk$", "target": "/kamra/hk"},
-	{"source": r"/checkin/(.*)", "target": r"/kamra/checkin/\1"},
+	{"source": r"/book$", "target": "/hotel/book", "forward_query_parameters": True},
+	{"source": r"/book/(.*)", "target": r"/hotel/book/\1", "forward_query_parameters": True},
+	{"source": r"/stay$", "target": "/hotel/stay", "forward_query_parameters": True},
+	{"source": r"/stay/(.*)", "target": r"/hotel/stay/\1", "forward_query_parameters": True},
+	{"source": r"/hk$", "target": "/hotel/hk", "forward_query_parameters": True},
+	{"source": r"/checkin/(.*)", "target": r"/hotel/checkin/\1", "forward_query_parameters": True},
+	# GARP Hotel: old /kamra links (bookmarks, sent check-in links) land on /hotel.
+	{"source": r"/kamra$", "target": "/hotel", "forward_query_parameters": True},
+	{"source": r"/kamra/(.*)", "target": r"/hotel/\1", "forward_query_parameters": True},
 ]
 
 # Each item in the list will be shown as an app in the apps page

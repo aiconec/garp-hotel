@@ -808,7 +808,7 @@ export default function BookingEngine() {
                     <span className="mb-1 block text-sm font-medium text-zinc-600">Meta Title</span>
                     <input
                       className={inputCls}
-                      placeholder="Grand Kamra Palace | Luxury Stay in Udaipur"
+                      placeholder="Grand Ubud Resort | Luxury Stay in Bali"
                       value={doc.meta_title ?? ""}
                       onChange={(e) => updateField("meta_title", e.target.value)}
                     />
@@ -819,7 +819,7 @@ export default function BookingEngine() {
                     <textarea
                       rows={3}
                       className={inputCls}
-                      placeholder="Book directly for best rates at Grand Kamra Palace, Udaipur. Located right on Lake Pichola with luxury amenities, rooftop pool, and five-star dine-in options."
+                      placeholder="Book directly for best rates at Grand Ubud Resort, Bali. Set among the rice terraces with an infinity pool, spa and all-day dining."
                       value={doc.meta_description ?? ""}
                       onChange={(e) => updateField("meta_description", e.target.value)}
                     />

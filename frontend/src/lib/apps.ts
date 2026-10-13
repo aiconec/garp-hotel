@@ -131,7 +131,7 @@ export const APPS: AppDef[] = [
       { to: "/housekeeping", label: "Tasks", icon: ListChecks },
       { to: "/laundry", label: "Laundry", icon: Shirt },
       { to: "/lost-found", label: "Lost & Found", icon: PackageSearch },
-      { href: "/kamra/hk", label: "Phone App", icon: Smartphone },
+      { href: "/hotel/hk", label: "Phone App", icon: Smartphone },
     ],
   },
   {
