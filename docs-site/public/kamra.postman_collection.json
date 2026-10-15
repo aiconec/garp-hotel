@@ -8895,10 +8895,10 @@
         "kamra.dashboards.property_dashboard"
        ]
       },
-      "description": "Everything one hotel's dashboard needs, by department.",
+      "description": "Everything one hotel's dashboard needs, by department. `period`\ncovers from_date..to_date (default: `date`); the rest is `date`.",
       "body": {
        "mode": "raw",
-       "raw": "{\n  \"property\": \"Your Property\",\n  \"date\": \"2026-08-01\"\n}",
+       "raw": "{\n  \"property\": \"Your Property\",\n  \"date\": \"2026-08-01\",\n  \"from_date\": \"2026-08-01\",\n  \"to_date\": \"2026-08-31\"\n}",
        "options": {
         "raw": {
          "language": "json"
@@ -8932,10 +8932,10 @@
         "kamra.dashboards.portfolio_dashboard"
        ]
       },
-      "description": "The chain's central view: headline metrics rolled up across every\nproperty the signed-in user may access, plus a per-property table.",
+      "description": "The chain's central view: headline metrics rolled up across every\nproperty the signed-in user may access, plus a per-property table.\nCovers from_date..to_date (default: `date`, which defaults to today).",
       "body": {
        "mode": "raw",
-       "raw": "{\n  \"date\": \"2026-08-01\"\n}",
+       "raw": "{\n  \"date\": \"2026-08-01\",\n  \"from_date\": \"2026-08-01\",\n  \"to_date\": \"2026-08-31\"\n}",
        "options": {
         "raw": {
          "language": "json"

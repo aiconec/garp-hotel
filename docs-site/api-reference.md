@@ -3307,12 +3307,15 @@ the room types with space for these dates and their all-in rate.
 
 **GET/POST** · roles: `Front Desk`, `Finance`, `Revenue Manager`, `Hotel Admin`, `Kamra Agent`
 
-Everything one hotel's dashboard needs, by department.
+Everything one hotel's dashboard needs, by department. `period`
+covers from_date..to_date (default: `date`); the rest is `date`.
 
 | Param | Required | Default |
 | --- | --- | --- |
 | `property` | yes |  |
 | `date` | no | `None` |
+| `from_date` | no | `None` |
+| `to_date` | no | `None` |
 
 ### `kamra.dashboards.portfolio_dashboard`
 
@@ -3320,10 +3323,13 @@ Everything one hotel's dashboard needs, by department.
 
 The chain's central view: headline metrics rolled up across every
 property the signed-in user may access, plus a per-property table.
+Covers from_date..to_date (default: `date`, which defaults to today).
 
 | Param | Required | Default |
 | --- | --- | --- |
 | `date` | no | `None` |
+| `from_date` | no | `None` |
+| `to_date` | no | `None` |
 
 
 ## Reports
