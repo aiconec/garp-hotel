@@ -8,9 +8,94 @@ a per-property table - the chain's central view.
 """
 
 import frappe
-from frappe.utils import nowdate
+from frappe import _
+from frappe.utils import date_diff, getdate, nowdate
 
 from kamra.authz import require_roles
+
+# Longest period a dashboard reports on in one call.
+_MAX_PERIOD_DAYS = 366
+
+
+def _resolve_period(from_date: str | None, to_date: str | None, date: str):
+	"""from_date..to_date inclusive; either end left out falls back to `date`."""
+	end = getdate(to_date or date)
+	start = getdate(from_date) if from_date else end
+	if start > end:
+		frappe.throw(_("The start date is after the end date."))
+	if date_diff(end, start) >= _MAX_PERIOD_DAYS:
+		frappe.throw(_("Choose a period of at most {0} days.").format(_MAX_PERIOD_DAYS))
+	return str(start), str(end)
+
+
+def _period_collections(property: str, start: str, end: str) -> float:
+	"""Money taken over the period, by the cashier summary's rule
+	(kamra.cashier.cash_summary_v2): a day the till was used counts its
+	cashier transactions, any other day its folio payments."""
+	till = frappe.db.sql(
+		"""SELECT business_date, kind, COALESCE(SUM(amount), 0) AS total
+		   FROM `tabCashier Transaction`
+		   WHERE property = %(p)s AND business_date BETWEEN %(s)s AND %(e)s
+		   GROUP BY business_date, kind""",
+		{"p": property, "s": start, "e": end}, as_dict=True)
+	till_days = {str(r.business_date) for r in till}
+	total = sum(float(r.total or 0) for r in till
+	            if r.kind not in ("Paid Out", "Drop", "Petty Cash"))
+	folio = frappe.db.sql(
+		"""SELECT fp.posting_date, COALESCE(SUM(fp.amount), 0) AS total
+		   FROM `tabFolio Payment` fp
+		   JOIN `tabFolio` f ON fp.parent = f.name
+		   WHERE f.property = %(p)s AND fp.posting_date BETWEEN %(s)s AND %(e)s
+		   GROUP BY fp.posting_date""",
+		{"p": property, "s": start, "e": end}, as_dict=True)
+	total += sum(float(r.total or 0) for r in folio
+	             if str(r.posting_date) not in till_days)
+	return round(total, 0)
+
+
+def _period_stats(property: str, start: str, end: str, total_rooms: int):
+	"""Room nights, revenue and the rates on top of them for any span of
+	days - kamra.reports._day_stats summed the way the flash sums its month
+	to date, in one query instead of one per day."""
+	row = frappe.db.sql(
+		"""
+		SELECT
+		  COUNT(DISTINCT CASE WHEN fc.charge_type = 'Room'
+		        THEN CONCAT(COALESCE(fc.reservation, f.reservation), '|',
+		                    fc.posting_date) END) AS room_nights,
+		  COALESCE(SUM(CASE WHEN fc.charge_type = 'Room'
+		        THEN fc.amount ELSE 0 END), 0) AS room_revenue,
+		  COALESCE(SUM(CASE WHEN fc.charge_type IN ('Food & Beverage',
+		        'Meal Plan', 'Minibar') THEN fc.amount ELSE 0 END), 0)
+		        AS fnb_revenue,
+		  COALESCE(SUM(CASE WHEN fc.charge_type NOT IN ('Room',
+		        'Food & Beverage', 'Meal Plan', 'Minibar', 'Discount')
+		        THEN fc.amount ELSE 0 END), 0) AS other_revenue
+		FROM `tabFolio Charge` fc
+		JOIN `tabFolio` f ON fc.parent = f.name
+		WHERE f.property = %(p)s AND fc.posting_date BETWEEN %(s)s AND %(e)s
+		""",
+		{"p": property, "s": start, "e": end}, as_dict=True)[0]
+	days = date_diff(end, start) + 1
+	capacity = total_rooms * days
+	nights = int(row.room_nights or 0)
+	rev = float(row.room_revenue or 0)
+	fnb = float(row.fnb_revenue or 0)
+	other = float(row.other_revenue or 0)
+	return {
+		"from_date": start,
+		"to_date": end,
+		"days": days,
+		"room_nights": nights,
+		"occupancy_pct": round(100 * nights / capacity, 1) if capacity else 0,
+		"room_revenue": round(rev, 0),
+		"fnb_revenue": round(fnb, 0),
+		"other_revenue": round(other, 0),
+		"revenue": round(rev + fnb + other, 0),
+		"adr": round(rev / nights, 0) if nights else 0,
+		"revpar": round(rev / capacity, 0) if capacity else 0,
+		"collections": _period_collections(property, start, end),
+	}
 
 
 def _housekeeping_slice(property: str):
@@ -62,11 +147,14 @@ def _finance_slice(property: str, date: str):
 
 @frappe.whitelist()
 @require_roles("Front Desk", "Finance", "Revenue Manager", "Hotel Admin", "Kamra Agent")
-def property_dashboard(property: str, date: str | None = None):
-	"""Everything one hotel's dashboard needs, by department."""
+def property_dashboard(property: str, date: str | None = None,
+                       from_date: str | None = None, to_date: str | None = None):
+	"""Everything one hotel's dashboard needs, by department. `period`
+	covers from_date..to_date (default: `date`); the rest is `date`."""
 	from kamra.crs import assert_property_access
 	assert_property_access(property)
 	date = date or nowdate()
+	start, end = _resolve_period(from_date, to_date, date)
 	from kamra.reports import manager_flash
 	flash = manager_flash(property, date)
 	today = flash.get("today") or {}
@@ -110,58 +198,73 @@ def property_dashboard(property: str, date: str | None = None):
 		"housekeeping": hk,
 		"finance": finance,
 		"outlook": flash.get("outlook", []),
+		"period": _period_stats(property, start, end, flash.get("total_rooms", 0)),
 	}
 
 
-def _property_summary(property: str, date: str):
-	"""Compact headline numbers for one property in the portfolio table."""
+def _property_summary(property: str, start: str, end: str):
+	"""Compact headline numbers for one property in the portfolio table:
+	the period's business, and what is in house and owed right now."""
 	total_rooms = frappe.db.count("Room", {"property": property}) or 0
-	from kamra.reports import _day_stats
-	s = _day_stats(property, date, total_rooms)
-	finance = _finance_slice(property, date)
+	s = _period_stats(property, start, end, total_rooms)
+	outstanding = frappe.db.sql(
+		"""SELECT COALESCE(SUM(balance), 0) FROM `tabFolio`
+		   WHERE property = %(p)s AND status = 'Open'""",
+		{"p": property})[0][0]
 	return {
 		"property": property,
 		"property_name": frappe.db.get_value("Property", property, "property_name"),
 		"total_rooms": total_rooms,
-		"occupancy_pct": s.get("occupancy_pct", 0),
-		"rooms_sold": s.get("rooms_sold", 0),
+		"occupancy_pct": s["occupancy_pct"],
+		"rooms_sold": s["room_nights"],
 		"arrivals": frappe.db.count("Reservation", {
-			"property": property, "check_in_date": date,
-			"status": ("in", ["Confirmed", "Checked In"])}),
+			"property": property, "check_in_date": ("between", [start, end]),
+			"status": ("in", ["Confirmed", "Checked In", "Checked Out"])}),
 		"departures": frappe.db.count("Reservation", {
-			"property": property, "check_out_date": date,
+			"property": property, "check_out_date": ("between", [start, end]),
 			"status": ("in", ["Checked In", "Checked Out"])}),
 		"in_house": frappe.db.count("Reservation", {
 			"property": property, "status": "Checked In"}),
-		"revenue_today": round(s.get("room_revenue", 0) + s.get("fnb_revenue", 0)
-		                       + s.get("other_revenue", 0), 0),
-		"collections_today": finance["collections_today"],
-		"outstanding": finance["outstanding"],
+		"revenue": s["revenue"],
+		"collections": s["collections"],
+		"outstanding": float(outstanding or 0),
 	}
 
 
 @frappe.whitelist()
 @require_roles("Finance", "Revenue Manager", "Hotel Admin", "Kamra Agent")
-def portfolio_dashboard(date: str | None = None):
+def portfolio_dashboard(date: str | None = None,
+                        from_date: str | None = None, to_date: str | None = None):
 	"""The chain's central view: headline metrics rolled up across every
-	property the signed-in user may access, plus a per-property table."""
+	property the signed-in user may access, plus a per-property table.
+	Covers from_date..to_date (default: `date`, which defaults to today)."""
 	date = date or nowdate()
+	start, end = _resolve_period(from_date, to_date, date)
 	from kamra.api import my_properties
 	props = [p["name"] for p in my_properties()]
-	rows = [_property_summary(p, date) for p in props]
+	rows = [_property_summary(p, start, end) for p in props]
+	for r in rows:
+		# names from before the period existed, kept for API callers
+		r["revenue_today"], r["collections_today"] = r["revenue"], r["collections"]
 
 	rooms = sum(r["total_rooms"] for r in rows)
 	sold = sum(r["rooms_sold"] for r in rows)
+	capacity = rooms * (date_diff(end, start) + 1)
+	revenue = round(sum(r["revenue"] for r in rows), 0)
+	collections = round(sum(r["collections"] for r in rows), 0)
 	totals = {
 		"properties": len(rows),
 		"total_rooms": rooms,
-		"occupancy_pct": round(100 * sold / rooms, 1) if rooms else 0,
+		"occupancy_pct": round(100 * sold / capacity, 1) if capacity else 0,
 		"arrivals": sum(r["arrivals"] for r in rows),
 		"departures": sum(r["departures"] for r in rows),
 		"in_house": sum(r["in_house"] for r in rows),
-		"revenue_today": round(sum(r["revenue_today"] for r in rows), 0),
-		"collections_today": round(sum(r["collections_today"] for r in rows), 0),
+		"revenue": revenue,
+		"collections": collections,
+		"revenue_today": revenue,
+		"collections_today": collections,
 		"outstanding": round(sum(r["outstanding"] for r in rows), 0),
 	}
-	rows.sort(key=lambda r: r["revenue_today"], reverse=True)
-	return {"date": date, "totals": totals, "properties": rows}
+	rows.sort(key=lambda r: r["revenue"], reverse=True)
+	return {"date": date, "from_date": start, "to_date": end,
+	        "totals": totals, "properties": rows}
