@@ -19,8 +19,7 @@ def get_context(context):
 		frappe.throw(
 			frappe._(
 				"GARP Hotel front-end is not built. Run "
-				"<code>cd apps/kamra/frontend && yarn install && yarn build</code> "
-				"(Frappe Cloud runs this automatically on deploy)."
+				"<code>cd apps/kamra/frontend && yarn install && yarn build</code>."
 			),
 			title="GARP Hotel not built",
 		)

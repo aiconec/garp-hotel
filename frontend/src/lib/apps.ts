@@ -68,7 +68,7 @@ export const APP_TILE =
 
 export interface AppNavItem {
   to?: string
-  href?: string // external (Frappe Desk, HK mobile app) - opens a new tab
+  href?: string // external (Biz Desk, HK mobile app) - opens a new tab
   label: string
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
   roles?: string[] // per-item gate on top of the app's gate
@@ -285,7 +285,7 @@ export const APPS: AppDef[] = [
       },
       {
         href: `${DESK}/app/build`,
-        label: "Frappe Desk",
+        label: "Biz Desk",
         icon: ExternalLink,
         roles: ["Administrator", "System Manager"],
       },
