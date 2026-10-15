@@ -841,9 +841,9 @@ What GARP Hotel does and where to find it:
   amenities (one per line) and a description shown on the public booking engine.
 - Settings: property & GST, booking page (hero image, amenities, description),
   cancellation/deposit policy, payment gateway, and the AI assistant (your own
-  key). Admins also have Developers (API keys), New Property and the Frappe Desk.
+  key). Admins also have Developers (API keys), New Property and the Biz Desk.
 - Public booking engine at /book; pre-arrival self check-in via the guest link.
-- Roles: a System Admin (IT - users, API keys, Frappe Desk) versus a Hotel
+- Roles: a System Admin (IT - users, API keys, Biz Desk) versus a Hotel
   Admin / GM (runs the property, no IT access). Manage staff from
   Admin → Manage Users.
 - GARP Hotel Agent (the sparkle button) can act - quote, book, check in,
