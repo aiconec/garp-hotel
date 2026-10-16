@@ -29,6 +29,12 @@ class TestProviderHosts(unittest.TestCase):
 		            "https://openai.azure.com.evil.io/v1",
 		            "http://169.254.169.254/latest",
 		            "http://host.docker.internal:11434/v1",
+		            # urlsplit reads the host as ...openai.azure.com, urllib3
+		            # (what requests connects to) as evil.com
+		            "https://evil.com\\.openai.azure.com/v1",
+		            "https://api.openai.com:99999/v1",
+		            "https://api.openai.com/v1?x=1",
+		            "https://api.openai.com./v1",
 		            "", None):
 			self.assertFalse(self.allowed(url), url)
 
@@ -38,6 +44,23 @@ class TestProviderHosts(unittest.TestCase):
 		self.assertTrue(self.allowed("http://ollama.internal:11434/v1", hosts))
 		self.assertFalse(self.allowed("http://llm.example.id/v1", hosts))
 		self.assertFalse(self.allowed("http://ollama.internal:8080/v1", hosts))
+
+
+class TestNumbers(unittest.TestCase):
+	def test_numbers_become_numbers(self):
+		self.assertEqual(assistant._coerce("amount", "550000", {"type": "number"}), 550000.0)
+		# what float() records is what the card shows
+		self.assertEqual(assistant._coerce("amount", "100.000", {"type": "number"}), 100.0)
+		self.assertEqual(assistant._coerce("adults", "2", {"type": "integer"}), 2)
+		self.assertEqual(assistant._coerce("folio", 7, {"type": "string"}), 7)
+
+	@mock.patch.object(assistant.frappe, "throw", side_effect=frappe.ValidationError)
+	def test_refuses_what_is_not_a_number(self, _throw):
+		for value in ("550.000,00", "Rp 550.000", "nan", "inf", [1]):
+			with self.assertRaises(frappe.ValidationError, msg=value):
+				assistant._coerce("amount", value, {"type": "number"})
+		with self.assertRaises(frappe.ValidationError):
+			assistant._coerce("adults", "2.5", {"type": "integer"})
 
 
 class TestChatHistory(unittest.TestCase):

@@ -224,11 +224,15 @@ export default function Assistant() {
           }
         }
       }
-      // persist the completed turn
-      const finalMsgs: ChatMsg[] = [
-        ...history,
-        { role: "assistant", content, actions },
-      ]
+      // persist the completed turn from the latest state, not `history`:
+      // an approval that finished while the agent answered keeps its outcome
+      const finalMsgs = await new Promise<ChatMsg[]>((done) =>
+        setMsgs((ms) => {
+          const next = ms.map((m, i) => (i === aIdx ? { ...m, content, actions } : m))
+          done(next)
+          return next
+        }),
+      )
       await saveConversation(
         convId,
         finalMsgs,

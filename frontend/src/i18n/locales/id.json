@@ -1429,5 +1429,11 @@
   "Change a room rate": "Ubah tarif kamar",
   "Run the night audit": "Jalankan audit malam",
   "Give a waitlisted guest a room": "Beri kamar untuk tamu daftar tunggu",
-  "Set a room's housekeeping status": "Ubah status housekeeping kamar"
+  "Set a room's housekeeping status": "Ubah status housekeeping kamar",
+  "No longer waiting": "Tidak lagi menunggu",
+  "Couldn't confirm the result. Check the record before you approve again.": "Hasilnya belum bisa dipastikan. Periksa datanya sebelum menyetujui lagi.",
+  "This is being handled in another window.": "Ini sedang diproses di jendela lain.",
+  "Current room": "Kamar saat ini",
+  "New room": "Kamar baru",
+  "Stay status": "Status menginap"
 }

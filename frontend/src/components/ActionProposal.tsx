@@ -1,7 +1,12 @@
 import { useState } from "react"
 import { Check, Loader2, ShieldCheck, X } from "lucide-react"
 
-import { approveAction, declineAction, type AgentAction } from "../lib/api"
+import {
+  approveAction,
+  declineAction,
+  isNetworkError,
+  type AgentAction,
+} from "../lib/api"
 import { useCashierAuth } from "../lib/cashierAuth"
 import { useT } from "../lib/i18n"
 import { serverError } from "../lib/resource"
@@ -40,6 +45,8 @@ const FIELD_LABEL: Record<string, string> = {
   reason: "Reason",
   note: "Note",
   room: "Room",
+  current_room: "Current room",
+  new_room: "New room",
   guest: "Guest",
   guest_name: "Guest name",
   phone: "Phone",
@@ -48,6 +55,7 @@ const FIELD_LABEL: Record<string, string> = {
   check_out_date: "Check-out",
   stay: "Stay",
   status: "Status",
+  stay_status: "Stay status",
   balance: "Balance",
   rate: "Rate",
   description: "Description",
@@ -62,7 +70,8 @@ const FIELD_LABEL: Record<string, string> = {
 }
 
 const ROW_ORDER = [
-  "guest", "guest_name", "reservation", "room", "stay", "status", "folio",
+  "guest", "guest_name", "reservation", "current_room", "stay", "stay_status",
+  "room", "new_room", "status", "folio",
   "balance", "amount", "mode", "reference", "reason", "note",
 ]
 
@@ -78,6 +87,21 @@ const show = (v: unknown) =>
  * proposal for these (assistant.RETRYABLE). */
 const PIN_ERROR = /^PIN_(REQUIRED|NOT_SET|MUST_RESET)/
 const POS_ERROR = /^NO_OPEN_SESSION/
+
+/** What a failed approve/decline means for the proposal. Only "refused" is
+ * a real "it didn't run"; a lost response may have run, and the server
+ * answers "expired" for one that ran or was declined elsewhere. */
+type Refusal = "unknown" | "busy" | "gone" | "pin" | "pos" | "refused"
+function classify(e: unknown): Refusal {
+  const status = (e as { status?: number }).status ?? 0
+  if (isNetworkError(e) || [502, 503, 504].includes(status)) return "unknown"
+  const msg = serverError(e)
+  if (PIN_ERROR.test(msg)) return "pin"
+  if (POS_ERROR.test(msg)) return "pos"
+  if (msg.includes("already being handled")) return "busy"
+  if (msg.includes("expired or isn't yours")) return "gone"
+  return "refused"
+}
 
 export function ActionProposal({
   action,
@@ -104,6 +128,24 @@ export function ActionProposal({
     ...Object.entries(action.args ?? {}).sort(([a], [b]) => rank(a) - rank(b)),
   ].filter(([, v]) => v !== null && v !== undefined && v !== "")
 
+  /** Show a refusal; the card stays open unless the proposal is gone. */
+  function settle(e: unknown, refusedIsFailure: boolean) {
+    const kind = classify(e)
+    if (kind === "gone") return onResolved({ status: "expired" })
+    if (kind === "refused") {
+      if (refusedIsFailure) return onResolved({ status: "failed", error: serverError(e) })
+      return setError(serverError(e))
+    }
+    setError(
+      {
+        unknown: t("Couldn't confirm the result. Check the record before you approve again."),
+        busy: t("This is being handled in another window."),
+        pin: t("Enter your cashier PIN to approve."),
+        pos: t("Open your POS session first, then approve again."),
+      }[kind],
+    )
+  }
+
   async function approve() {
     if (!action.id || busy) return
     setBusy(true)
@@ -113,9 +155,10 @@ export function ActionProposal({
       try {
         out = await approveAction(action.id)
       } catch (e) {
-        if (!PIN_ERROR.test(serverError(e))) throw e
+        if (classify(e) !== "pin") throw e
         try {
-          await ensureUnlocked()
+          // the proposal's property: the PIN rule is per property
+          await ensureUnlocked(action.property)
         } catch (pinErr) {
           // cancelled or locked: the server still holds the proposal
           const m = (pinErr as Error).message ?? ""
@@ -126,14 +169,7 @@ export function ActionProposal({
       }
       onResolved({ status: "approved", note: out.note })
     } catch (e) {
-      const msg = serverError(e)
-      if (POS_ERROR.test(msg)) {
-        setError(t("Open your POS session first, then approve again."))
-      } else if (PIN_ERROR.test(msg)) {
-        setError(t("Enter your cashier PIN to approve."))
-      } else {
-        onResolved({ status: "failed", error: msg })
-      }
+      settle(e, true)
     } finally {
       setBusy(false)
     }
@@ -142,9 +178,15 @@ export function ActionProposal({
   async function decline() {
     if (!action.id || busy) return
     setBusy(true)
-    await declineAction(action.id).catch(() => {})
-    setBusy(false)
-    onResolved({ status: "declined" })
+    setError(null)
+    try {
+      await declineAction(action.id)
+      onResolved({ status: "declined" })
+    } catch (e) {
+      settle(e, false)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const done = action.status
@@ -154,7 +196,8 @@ export function ActionProposal({
         "space-y-2 rounded-xl border px-3 py-2.5 text-sm",
         !done && "border-amber-300 bg-amber-50",
         done === "approved" && "border-emerald-200 bg-emerald-50",
-        done === "declined" && "border-zinc-200 bg-zinc-50 text-zinc-500",
+        (done === "declined" || done === "expired") &&
+          "border-zinc-200 bg-zinc-50 text-zinc-500",
         done === "failed" && "border-rose-200 bg-rose-50",
       )}
     >
@@ -164,7 +207,7 @@ export function ActionProposal({
             "size-4 shrink-0",
             !done && "text-amber-600",
             done === "approved" && "text-emerald-600",
-            done === "declined" && "text-zinc-400",
+            (done === "declined" || done === "expired") && "text-zinc-400",
             done === "failed" && "text-rose-600",
           )}
           aria-hidden
@@ -174,6 +217,7 @@ export function ActionProposal({
           {!done && <span className="text-amber-700">{t("Needs your approval")}</span>}
           {done === "approved" && <span className="text-emerald-700">{t("Done")}</span>}
           {done === "declined" && <span>{t("Declined")}</span>}
+          {done === "expired" && <span>{t("No longer waiting")}</span>}
           {done === "failed" && <span className="text-rose-700">{t("Failed")}</span>}
         </span>
       </div>
@@ -232,6 +276,8 @@ export function outcomeNotes(actions: AgentAction[] | undefined): string[] {
       if (a.status === "failed")
         return `[Staff approved ${a.tool} but it failed: ${a.error ?? "error"}]`
       if (a.status === "declined") return `[Staff declined ${a.tool}; it did not run.]`
-      return `[${a.tool} was proposed and not approved; it did not run.]`
+      if (a.status === "expired")
+        return `[${a.tool} is no longer waiting: it expired or was handled in another window. Check the record before proposing it again.]`
+      return `[${a.tool} is still waiting for the staff member's Approve on its card; it has not run. Don't propose it again.]`
     })
 }

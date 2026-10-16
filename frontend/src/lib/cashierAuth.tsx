@@ -22,8 +22,9 @@ type PinStatus = {
 type CashierAuth = {
   status: PinStatus | null
   refresh: () => Promise<void>
-  /** Ensure unlock window; opens PinPad if needed. Resolves when ready. */
-  ensureUnlocked: () => Promise<void>
+  /** Ensure unlock window; opens PinPad if needed. Resolves when ready.
+   * `property` defaults to the current one; the PIN rule is per property. */
+  ensureUnlocked: (property?: string) => Promise<void>
   /** Legacy helper: returns pin string only when still needed per-call. */
   withPin: <T>(fn: (pin?: string) => Promise<T>) => Promise<T>
 }
@@ -34,6 +35,7 @@ export function CashierAuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<PinStatus | null>(null)
   const [padOpen, setPadOpen] = useState(false)
   const [padMode, setPadMode] = useState<"unlock" | "enroll">("unlock")
+  const [padProperty, setPadProperty] = useState<string | null>(null)
   const [padError, setPadError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [waiter, setWaiter] = useState<{
@@ -71,12 +73,12 @@ export function CashierAuthProvider({ children }: { children: ReactNode }) {
         if (padMode === "enroll") {
           await call("kamra.api.set_cashier_pin", { pin })
           await call("kamra.api.verify_cashier_pin", {
-            property: getCurrentProperty(),
+            property: padProperty ?? getCurrentProperty(),
             pin,
           })
         } else {
           await call("kamra.api.verify_cashier_pin", {
-            property: getCurrentProperty(),
+            property: padProperty ?? getCurrentProperty(),
             pin,
           })
         }
@@ -88,17 +90,19 @@ export function CashierAuthProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [padMode, refresh, finishOk],
+    [padMode, padProperty, refresh, finishOk],
   )
 
-  const ensureUnlocked = useCallback(() => {
+  const ensureUnlocked = useCallback((property?: string) => {
+    const prop = property ?? getCurrentProperty()
+    const current = prop === getCurrentProperty()
     return new Promise<void>((resolve, reject) => {
       void (async () => {
         // ask fresh: a cached "unlocked" outlives the 15-minute window
         const s = await call<PinStatus>("kamra.api.cashier_pin_status", {
-          property: getCurrentProperty(),
-        }).catch(() => status)
-        if (s) setStatus(s)
+          property: prop,
+        }).catch(() => (current ? status : null))
+        if (s && current) setStatus(s)
         if (!s?.required || s.unlocked) {
           resolve()
           return
@@ -108,6 +112,7 @@ export function CashierAuthProvider({ children }: { children: ReactNode }) {
           return
         }
         setPadMode(s.has_pin && !s.must_reset ? "unlock" : "enroll")
+        setPadProperty(prop)
         setPadError(null)
         setWaiter({ resolve, reject })
         setPadOpen(true)

@@ -1483,8 +1483,10 @@ export interface AgentAction {
   id?: string
   args?: Record<string, unknown>
   context?: Record<string, unknown>
-  status?: "approved" | "declined" | "failed"
+  status?: "approved" | "declined" | "failed" | "expired"
   note?: string
+  /** the property the proposal acts on (its PIN rule applies) */
+  property?: string
 }
 export interface ChatMsg {
   role: "user" | "assistant"
