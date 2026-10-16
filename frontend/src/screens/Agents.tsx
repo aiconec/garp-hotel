@@ -42,7 +42,7 @@ export default function Agents() {
       <header className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Sparkles className="size-5 text-brand-600" aria-hidden />
-          <h1 className="text-xl font-semibold tracking-tight">GARP Hotel Agent</h1>
+          <h1 className="text-xl font-semibold tracking-tight">BizConnect.id Hotel Agent</h1>
         </div>
         <p className="text-sm text-zinc-500">
           Chat in the console, or connect Claude — it acts as you, with your
@@ -413,7 +413,7 @@ export function ConnectTab({ property }: { property: string }) {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-zinc-600">
-              Connect Claude is turned off on this site. On your own GARP Hotel site,
+              Connect Claude is turned off on this site. On your own BizConnect.id Hotel site,
               every staff member can connect Claude and act within their role.
             </p>
           </CardContent>

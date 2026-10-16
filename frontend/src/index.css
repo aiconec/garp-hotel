@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* GARP Hotel brand: GARP violet (upstream Kamra used hotel green), warm neutrals */
+  /* BizConnect.id Hotel brand: the BizConnect.id violet (upstream Kamra used hotel green), warm neutrals */
   --color-brand-50: #f5f3ff;
   --color-brand-100: #ede9fe;
   --color-brand-600: #7c3aed;

@@ -80,7 +80,7 @@ export default function Login(props: { onSuccess: () => void }) {
             className="text-2xl font-semibold tracking-[0.02em] text-[#2E1065]"
             style={{ fontFamily: "Montserrat, ui-sans-serif, system-ui, sans-serif" }}
           >
-            GARP
+            BizConnect<span className="text-[#6D28D9]">.id</span>
             <span className="ml-1.5 align-middle text-[10px] font-semibold tracking-[0.4em] text-[#6D28D9]">
               HOTEL
             </span>

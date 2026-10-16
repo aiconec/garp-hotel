@@ -1171,7 +1171,7 @@ export default function Settings() {
             <CardTitle>Agent access (MCP)</CardTitle>
             <p className="mt-0.5 text-xs text-zinc-400">
               Connect Claude to this property's governed tool layer. Staff
-              click Connect Claude on GARP Hotel Agent — no API keys on a laptop.
+              click Connect Claude on BizConnect.id Hotel Agent — no API keys on a laptop.
               Every agent action lands in the Agent Action Log.
             </p>
           </div>
@@ -1180,7 +1180,7 @@ export default function Settings() {
           <p className="text-zinc-600">
             Open{" "}
             <a href="/hotel/assistant" className="font-medium text-brand-700 hover:underline">
-              GARP Hotel Agent → Connect your AI
+              BizConnect.id Hotel Agent → Connect your AI
             </a>{" "}
             and click <strong>Connect Claude</strong>. Claude opens with this
             hotel&apos;s MCP URL filled in; confirm, sign in as yourself, done.

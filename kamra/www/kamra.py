@@ -18,10 +18,10 @@ def get_context(context):
 	if not os.path.exists(index_path):
 		frappe.throw(
 			frappe._(
-				"GARP Hotel front-end is not built. Run "
+				"BizConnect.id Hotel front-end is not built. Run "
 				"<code>cd apps/kamra/frontend && yarn install && yarn build</code>."
 			),
-			title="GARP Hotel not built",
+			title="BizConnect.id Hotel not built",
 		)
 
 	with open(index_path, encoding="utf-8") as f:  # nosemgrep: frappe-security-file-traversal -- serves the app's own built index.html from a fixed app path, not user input

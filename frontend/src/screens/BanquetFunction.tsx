@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   ArrowLeft,
-  BadgeIndianRupee,
+  Banknote,
   CalendarClock,
   CheckSquare,
   FileText,
@@ -1838,7 +1838,7 @@ function MoneyTab({
         <CardHeader>
           <CardTitle>
             <span className="inline-flex items-center gap-1.5">
-              <BadgeIndianRupee className="size-4" />
+              <Banknote className="size-4" />
               Settlement
             </span>
           </CardTitle>

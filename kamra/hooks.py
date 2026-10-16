@@ -1,5 +1,5 @@
 app_name = "kamra"
-app_title = "GARP Hotel"
+app_title = "BizConnect.id Hotel"
 app_publisher = "HeyKoala"
 app_description = (
 	"Open-source, AI-native hotel PMS — front desk, direct booking, "
@@ -20,7 +20,7 @@ add_to_apps_screen = [
 	{
 		"name": "kamra",
 		"logo": "/assets/kamra/kamra-mark.svg",
-		"title": "GARP Hotel",
+		"title": "BizConnect.id Hotel",
 		"route": "/hotel",
 	}
 ]
@@ -91,7 +91,7 @@ kamra_localization = {
 # injected; every deep link falls through to it so browser refresh works.
 website_route_rules = [
 	{"from_route": "/kamra/<path:app_path>", "to_route": "kamra"},
-	# GARP Hotel serves the SPA at /hotel; the www page stays `kamra`.
+	# BizConnect.id Hotel serves the SPA at /hotel; the www page stays `kamra`.
 	{"from_route": "/hotel", "to_route": "kamra"},
 	{"from_route": "/hotel/<path:app_path>", "to_route": "kamra"},
 ]
@@ -104,7 +104,7 @@ website_redirects = [
 	{"source": r"/stay/(.*)", "target": r"/hotel/stay/\1", "forward_query_parameters": True},
 	{"source": r"/hk$", "target": "/hotel/hk", "forward_query_parameters": True},
 	{"source": r"/checkin/(.*)", "target": r"/hotel/checkin/\1", "forward_query_parameters": True},
-	# GARP Hotel: old /kamra links (bookmarks, sent check-in links) land on /hotel.
+	# BizConnect.id Hotel: old /kamra links (bookmarks, sent check-in links) land on /hotel.
 	{"source": r"/kamra$", "target": "/hotel", "forward_query_parameters": True},
 	{"source": r"/kamra/(.*)", "target": r"/hotel/\1", "forward_query_parameters": True},
 ]

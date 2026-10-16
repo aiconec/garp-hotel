@@ -1,14 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="GARP Hotel">
-  <!-- GARP Hotel: the GARP mark (garp_branding/public/images/garp-mark.svg).
-       Kept at upstream's file name so every reference picks it up. -->
-  <defs>
-    <linearGradient id="garpTile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#a855f7"/>
-      <stop offset="1" stop-color="#6d28d9"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="15" fill="url(#garpTile)"/>
-  <path d="M43.15 21.96A15 15 0 1 0 42.04 43.15V32.6H32.5"
-        fill="none" stroke="#fff" stroke-width="7.5"
-        stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="BizConnect.id Hotel"><defs><linearGradient id="bcTile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a855f7"/><stop offset="1" stop-color="#6d28d9"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#bcTile)"/><g fill="none" stroke="#fff" stroke-width="7.5" stroke-linecap="round"><path d="M16.15 16.25V37.75"/><circle cx="26.15" cy="37.75" r="10"/></g><circle cx="47" cy="46.9" r="4.6" fill="#fff"/></svg>

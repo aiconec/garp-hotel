@@ -170,7 +170,7 @@ export default function AssistantPanel() {
         <div className="fixed bottom-20 right-5 z-40 flex h-[560px] w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl print:hidden">
           <div className="flex items-center gap-2 border-b border-zinc-100 px-4 py-3">
             <Sparkles className="size-4 text-brand-600" aria-hidden />
-            <span className="text-sm font-semibold">GARP Hotel Agent</span>
+            <span className="text-sm font-semibold">BizConnect.id Hotel Agent</span>
             <span className="ml-auto text-[10px] uppercase tracking-wider text-zinc-400">
               your key · your data
             </span>
@@ -193,7 +193,7 @@ export default function AssistantPanel() {
             {msgs.length === 0 && (
               <div className="space-y-2">
                 <p className="text-sm text-zinc-600">
-                  I can act on the property through GARP Hotel's governed tools:
+                  I can act on the property through BizConnect.id Hotel's governed tools:
                 </p>
                 <ul className="list-disc space-y-0.5 pl-5 text-sm text-zinc-500">
                   <li>Read today's board - arrivals, departures, in-house</li>
@@ -277,7 +277,7 @@ export default function AssistantPanel() {
           >
             <input
               className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-brand-600"
-              placeholder="Ask GARP Hotel Agent…"
+              placeholder="Ask BizConnect.id Hotel Agent…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />
