@@ -152,7 +152,7 @@ export default function CashierTill() {
             {t("Cashier")}
           </p>
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-            {t("My Till")}
+            {t("POS")}
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
             {t("Business date")}{" "}
@@ -196,7 +196,7 @@ export default function CashierTill() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Lock className="size-4" /> {t("Open till")}
+              <Lock className="size-4" /> {t("Open POS")}
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap items-end gap-3">
@@ -306,7 +306,7 @@ export default function CashierTill() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Wallet className="size-4" /> {t("Close till")}
+                <Wallet className="size-4" /> {t("Close POS")}
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap items-end gap-3">

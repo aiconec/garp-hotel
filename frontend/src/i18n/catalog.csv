@@ -111,7 +111,6 @@ Cashier,Cashier,أمين الصندوق,screens/CashierTill.tsx,,translated
 Cashier PIN,Cashier PIN,رمز أمين الصندوق,components/PinPad.tsx,,translated
 Cashier PIN required for money actions.,Cashier PIN required for money actions.,رمز أمين الصندوق مطلوب لإجراءات المال.,screens/FolioView.tsx,,translated
 Cashier shift report,Cashier shift report,تقرير وردية أمين الصندوق,screens/Reports.tsx,,translated
-Cashier till,Cashier till,صندوق أمين الصندوق,screens/Billing.tsx,,translated
 Cashier unlocked — money actions are open for 15 minutes.,Cashier unlocked — money actions are open for 15 minutes.,تم فتح أمين الصندوق — إجراءات المال مفتوحة لمدة 15 دقيقة.,screens/FolioView.tsx,,translated
 Category,Category,الفئة,screens/Setup.tsx; screens/Tickets.tsx,,translated
 Central reservations,Central reservations,الحجوزات المركزية,screens/CRS.tsx,,translated
@@ -142,7 +141,7 @@ Close,Close,إغلاق,components/BookingDialog.tsx; components/PinPad.tsx; scre
 Close & generate invoice,Close & generate invoice,إغلاق وإنشاء فاتورة,screens/FolioView.tsx,,translated
 Close complimentary bill,Close complimentary bill,إغلاق الفاتورة المجانية,screens/POS.tsx,,translated
 Close session,Close session,إغلاق الجلسة,screens/CashierTill.tsx,,translated
-Close till,Close till,إغلاق الصندوق,screens/CashierTill.tsx,,translated
+Close POS,Close POS,إغلاق نقطة البيع,screens/CashierTill.tsx,,translated
 Cloudbeds export,Cloudbeds export,تصدير Cloudbeds,screens/Setup.tsx,,translated
 Collect & count,Collect & count,تحصيل وعدّ,screens/Laundry.tsx,,translated
 Collect now,Collect now,تحصيل الآن,screens/Laundry.tsx,,translated
@@ -268,7 +267,7 @@ Free Child Age Limit (Years),Free Child Age Limit (Years),حد عمر الطفل
 From,From,من,screens/Banquet.tsx,,translated
 Front Desk Overview,Front Desk Overview,نظرة عامة على الاستقبال,screens/Today.tsx,,translated
 Full payment,Full payment,دفع كامل,screens/Setup.tsx,,translated
-Full screen till,Full screen till,صندوق بملء الشاشة,screens/POS.tsx,,translated
+Full screen POS,Full screen POS,نقطة البيع بملء الشاشة,screens/POS.tsx,,translated
 "Function prospecting through to the event order - enquiry, quotation, contract, and the day itself.","Function prospecting through to the event order - enquiry, quotation, contract, and the day itself.",من استقطاب المناسبة إلى أمر الفعالية - استفسار وعرض وعقد واليوم نفسه.,screens/Banquet.tsx,,translated
 GRC,GRC,بطاقة التسجيل,screens/Today.tsx,,translated
 GST {rate}%,GST {rate}%,GST {rate}%,screens/FolioView.tsx,rate,translated
@@ -368,7 +367,7 @@ Move room,Move room,نقل الغرفة,screens/TapeChart.tsx,,translated
 Movement,Movement,الحركة,screens/Reports.tsx,,translated
 "Multiple rooms, optional F&B and events. Classic front-desk flow.","Multiple rooms, optional F&B and events. Classic front-desk flow.",غرف متعددة، مأكولات ومشروبات وفعاليات اختيارية. سير عمل الاستقبال الكلاسيكي.,screens/Setup.tsx,,translated
 My Tasks{n},My Tasks{n},مهامي{n},screens/HkApp.tsx,n,translated
-My Till,My Till,صندوقي,screens/CashierTill.tsx,,translated
+POS,POS,نقطة البيع,screens/CashierTill.tsx,,translated
 NEW,NEW,جديد,screens/Kitchen.tsx,,translated
 Name (Deluxe),Name (Deluxe),الاسم (ديلوكس),screens/Setup.tsx,,translated
 Name or phone…,Name or phone…,الاسم أو الهاتف…,screens/Guests.tsx,,translated
@@ -439,15 +438,14 @@ Online check-in not sent,Online check-in not sent,لم يُرسل التسجيل
 "Online check-in sent, not filled","Online check-in sent, not filled",أُرسل التسجيل عبر الإنترنت، لم يُملأ,components/CheckInDialog.tsx,,translated
 Online check-in {status},Online check-in {status},التسجيل عبر الإنترنت {status},components/CheckInDialog.tsx,status,translated
 Open GRC,Open GRC,فتح بطاقة التسجيل,components/CheckInDialog.tsx,,translated
-Open My Till,Open My Till,فتح صندوقي,screens/Billing.tsx,,translated
+Open POS,Open POS,فتح نقطة البيع,screens/Billing.tsx,,translated
 Open folios,Open folios,الفواتير المفتوحة,screens/Dashboard.tsx,,translated
 Open search,Open search,فتح البحث,AppShell.tsx,,translated
 Open session,Open session,فتح جلسة,screens/CashierTill.tsx,,translated
 Open stay →,Open stay →,فتح الإقامة ←,screens/WhatsAppChat.tsx,,translated
 Open tasks,Open tasks,المهام المفتوحة,screens/Dashboard.tsx; screens/Today.tsx,,translated
 Open the enquiry,Open the enquiry,فتح الاستفسار,screens/Banquet.tsx,,translated
-Open till,Open till,فتح الصندوق,screens/CashierTill.tsx,,translated
-"Open your till, reconcile cash and close the session under Finance → Cashier. Collections live there now.","Open your till, reconcile cash and close the session under Finance → Cashier. Collections live there now.",افتح صندوقك، طابق النقد وأغلق الجلسة تحت المالية ← أمين الصندوق. التحصيلات هناك الآن.,screens/Billing.tsx,,translated
+"Open the POS, reconcile cash and close the session under Finance → POS. Collections live there now.","Open the POS, reconcile cash and close the session under Finance → POS. Collections live there now.",افتح نقطة البيع، طابق النقد وأغلق الجلسة تحت المالية ← نقطة البيع. التحصيلات هناك الآن.,screens/Billing.tsx,,translated
 Opening float,Opening float,الرصيد الافتتاحي,screens/CashierTill.tsx,,translated
 Optional code,Optional code,رمز اختياري,components/BookingDialog.tsx,,translated
 Or jump to any screen.,Or jump to any screen.,أو انتقل لأي شاشة.,components/CommandPalette.tsx,,translated
