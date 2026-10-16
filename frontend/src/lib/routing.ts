@@ -1,4 +1,4 @@
-// The SPA is served at /hotel in production (GARP Hotel; upstream Kamra used
+// The SPA is served at /hotel in production (BizConnect.id Hotel; upstream Kamra used
 // /kamra, which the server now redirects here) and at / by the Vite dev server.
 export const ROUTER_BASENAME = import.meta.env.PROD ? "/hotel" : "/"
 

@@ -120,7 +120,7 @@ def authorization_server_doc() -> dict:
 
 def claude_install_url(property_name: str, mcp_url: str | None = None) -> str:
 	url = mcp_url or mcp_resource_url()
-	name = f"{property_name} (GARP Hotel)"
+	name = f"{property_name} (BizConnect.id Hotel)"
 	return (
 		"https://claude.ai/customize/connectors"
 		"?modal=add-custom-connector"
@@ -448,7 +448,7 @@ def _error_page(message: str) -> str:
 	return _html_shell(
 		"Could not connect",
 		f"<p>{frappe.utils.escape_html(message)}</p>"
-		"<p><a href='/hotel/assistant'>Back to GARP Hotel</a></p>",
+		"<p><a href='/hotel/assistant'>Back to BizConnect.id Hotel</a></p>",
 	)
 
 
@@ -474,7 +474,7 @@ def _consent_page(params: dict[str, str], user: str, properties: list[dict]) -> 
 		"Connect Claude to this hotel",
 		f"""
 		<p>Claude will act as <strong>{who}</strong> — the same role limits
-		as the desk. Prices, taxes and availability stay in GARP Hotel. Every
+		as the desk. Prices, taxes and availability stay in BizConnect.id Hotel. Every
 		action lands in the Activity log under your name.</p>
 		<form method="post" action="{issuer_url()}/authorize">
 		  <input type="hidden" name="csrf_token" value="{csrf}">
@@ -497,7 +497,7 @@ def _html_shell(title: str, body: str) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{frappe.utils.escape_html(title)} · GARP Hotel</title>
+<title>{frappe.utils.escape_html(title)} · BizConnect.id Hotel</title>
 <style>
   :root {{ color-scheme: light; }}
   body {{ margin:0; font: 16px/1.45 ui-sans-serif, system-ui, sans-serif;

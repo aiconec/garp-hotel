@@ -964,7 +964,7 @@ export default function PublicBooking() {
         )}
 
         <p className="mt-10 text-center text-xs text-zinc-400">
-          Powered by GARP Hotel
+          Powered by BizConnect.id Hotel
         </p>
       </div>
 

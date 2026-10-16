@@ -57,7 +57,7 @@ function ThinkingDots() {
 function AiSetupNotice() {
   return (
     <div className="mx-auto max-w-lg space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-      <p className="font-semibold">GARP Hotel Agent needs an AI key to start working.</p>
+      <p className="font-semibold">BizConnect.id Hotel Agent needs an AI key to start working.</p>
       <ol className="list-decimal space-y-1 pl-5">
         <li>
           Get an OpenAI API key at{" "}
@@ -72,7 +72,7 @@ function AiSetupNotice() {
           (sign up, add billing, create a key).
         </li>
         <li>
-          In GARP Hotel, open <b>Settings, AI assistant</b>: paste the key, pick a
+          In BizConnect.id Hotel, open <b>Settings, AI assistant</b>: paste the key, pick a
           model (gpt-4o-mini works well), switch it on, save.
         </li>
         <li>Come back here and ask a question.</li>
@@ -278,7 +278,7 @@ export default function Assistant() {
       <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white">
         <div className="flex items-center gap-2 border-b border-zinc-100 px-4 py-3">
           <Sparkles className="size-4 text-brand-600" />
-          <span className="text-sm font-semibold">GARP Hotel Agent</span>
+          <span className="text-sm font-semibold">BizConnect.id Hotel Agent</span>
           <span className="text-[10px] uppercase tracking-wider text-zinc-400">
             your AI, acting as you · on{" "}
             {getCurrentProperty()?.split("-")[0] ?? "your hotel"}

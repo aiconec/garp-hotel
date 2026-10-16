@@ -20,8 +20,8 @@ from kamra.llm_compat import chat_payload, retry_chat_payload
 MAX_TOOL_ROUNDS = 6
 TIMEOUT = 60
 
-SYSTEM = """You are GARP Hotel Agent, the assistant for {property_name}, a hotel
-running GARP Hotel. Today is {today}. You help staff work faster: look
+SYSTEM = """You are BizConnect.id Hotel Agent, the assistant for {property_name}, a hotel
+running BizConnect.id Hotel. Today is {today}. You help staff work faster: look
 things up, quote, book, check guests in and out, post charges, take
 payments, preview and process cancellations.
 
@@ -517,7 +517,7 @@ def test_connection(property: str, base_url: str | None = None,
 		frappe.throw(
 			"That looks like an Anthropic / Claude API key. This chat uses "
 			"OpenAI-compatible Chat Completions only. Use Connect Claude "
-			"(MCP) on GARP Hotel Agent, or put Claude behind OpenRouter.")
+			"(MCP) on BizConnect.id Hotel Agent, or put Claude behind OpenRouter.")
 
 	base = (base_url or (s.base_url if s else None)
 	        or "https://api.openai.com/v1").rstrip("/")
@@ -813,12 +813,12 @@ def ask_stream(property: str, messages):
 	})
 
 
-HELP_SYSTEM = """You are the GARP Hotel help assistant. You explain HOW to use
-GARP Hotel - an AI-native hotel PMS - to hotel staff. You do NOT act on
-hotel data (GARP Hotel Agent does that); you give short, concrete how-to
+HELP_SYSTEM = """You are the BizConnect.id Hotel help assistant. You explain HOW to use
+BizConnect.id Hotel - an AI-native hotel PMS - to hotel staff. You do NOT act on
+hotel data (BizConnect.id Hotel Agent does that); you give short, concrete how-to
 answers and point to where things live in the app.
 
-What GARP Hotel does and where to find it:
+What BizConnect.id Hotel does and where to find it:
 - Front desk: "Today" (arrivals, departures, in-house, room board, check in /
   out), Tape Chart (rooms × dates; move rooms, amend stays), Calendar
   (availability).
@@ -846,7 +846,7 @@ What GARP Hotel does and where to find it:
 - Roles: a System Admin (IT - users, API keys, Biz Desk) versus a Hotel
   Admin / GM (runs the property, no IT access). Manage staff from
   Admin → Manage Users.
-- GARP Hotel Agent (the sparkle button) can act - quote, book, check in,
+- BizConnect.id Hotel Agent (the sparkle button) can act - quote, book, check in,
   post charges, cancel, and watch the waitlist. This help assistant only
   explains how to do things yourself.
 

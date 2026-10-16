@@ -21,7 +21,7 @@ from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 from kamra import __version__ as KAMRA_VERSION
 from kamra.authz import require_roles
 
-# GARP Hotel: update checks follow our fork, not upstream Kamra releases.
+# BizConnect.id Hotel: update checks follow our fork, not upstream Kamra releases.
 GITHUB_REPO = "aiconec/garp-hotel"
 GITHUB_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES = f"https://github.com/{GITHUB_REPO}/releases"
@@ -162,7 +162,7 @@ def _frappe_check() -> dict:
 	major = int(str(ver).split(".")[0]) if str(ver)[0:1].isdigit() else 0
 	if major and major < 16:
 		status = "attention"
-		detail = f"Frappe {ver} — GARP Hotel targets Frappe v16."
+		detail = f"Frappe {ver} — BizConnect.id Hotel targets Frappe v16."
 	else:
 		status = "passed"
 		detail = f"Frappe {ver}."
@@ -281,8 +281,8 @@ def _upgrade_payload() -> dict:
 			"--app kamra && bench restart"
 		),
 		"note": (
-			"GARP Hotel does not auto-upgrade the site from this screen. "
-			"On GARP the platform ships new versions; ask GARP support."
+			"BizConnect.id Hotel does not auto-upgrade the site from this screen. "
+			"On BizConnect.id the platform ships new versions; ask BizConnect.id support."
 		),
 	}
 

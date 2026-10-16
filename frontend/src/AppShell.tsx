@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react"
 import {
-  IndianRupee,
   LayoutGrid,
   Moon,
   Plus,
@@ -305,9 +304,12 @@ export default function AppShell() {
       <aside className="hidden w-52 shrink-0 border-r border-zinc-200 bg-white px-3 py-5 sm:sticky sm:top-0 sm:block sm:h-screen sm:overflow-y-auto">
         <div className="mb-5 flex items-center gap-2 px-1">
           <img src={asset("kamra-mark.svg")} alt="" className="size-7" aria-hidden />
-          <span className="text-lg font-semibold tracking-tight">
-            GARP
-            <span className="ml-1 align-middle text-[10px] font-semibold tracking-[0.2em] text-brand-600">
+          {/* Stacked: "BizConnect.id HOTEL" on one line overflows the w-52 rail. */}
+          <span className="flex flex-col leading-none">
+            <span className="text-base font-semibold tracking-tight">
+              BizConnect<span className="text-brand-600">.id</span>
+            </span>
+            <span className="mt-1 text-[10px] font-semibold tracking-[0.2em] text-brand-600">
               HOTEL
             </span>
           </span>
@@ -457,9 +459,6 @@ export default function AppShell() {
         />
       )}
 
-      <span className="hidden">
-        <IndianRupee className="size-3" aria-hidden />
-      </span>
     </div>
     </div>
   )

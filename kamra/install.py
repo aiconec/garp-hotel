@@ -72,7 +72,7 @@ def ensure_agent_identity():
 		user = frappe.get_doc({
 			"doctype": "User",
 			"email": AGENT_EMAIL,
-			"first_name": "GARP Hotel",
+			"first_name": "BizConnect.id Hotel",
 			"last_name": "Agent",
 			"enabled": 1,
 			"user_type": "System User",

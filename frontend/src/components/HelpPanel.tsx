@@ -134,7 +134,7 @@ export default function HelpPanel() {
             {msgs.length === 0 && (
               <div className="space-y-2">
                 <p className="text-sm text-zinc-600">
-                  Ask how to do anything in GARP Hotel - I'll walk you through it.
+                  Ask how to do anything in BizConnect.id Hotel - I'll walk you through it.
                 </p>
                 {SUGGESTIONS.map((s) => (
                   <button
