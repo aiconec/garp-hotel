@@ -7,6 +7,7 @@
     Every app is open and included - Kamra is fully open source. */
 
 import {
+  AppWindow,
   BadgePercent,
   Share2,
   Network,
@@ -21,7 +22,6 @@ import {
   ClipboardList,
   Clock,
   Code2,
-  ExternalLink,
   FileSpreadsheet,
   HeartPulse,
   Home,
@@ -60,6 +60,8 @@ import {
   History,
   Banknote,
   Calculator,
+  ChartGantt,
+  MapPin,
 } from "lucide-react"
 
 /** Shared tile treatment for switcher and launcher. One quiet system, not a rainbow. */
@@ -72,7 +74,8 @@ export interface AppNavItem {
   label: string
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
   roles?: string[] // per-item gate on top of the app's gate
-  /** Sidebar section label within an app (e.g. Cashier / Billing / Books). */
+  /** Sidebar section label within an app (e.g. Cashier / Billing / Books).
+   *  Items before the first labelled section sit under the app header. */
   group?: string
 }
 
@@ -102,13 +105,14 @@ export const APPS: AppDef[] = [
     items: [
       { to: "/", label: "Today", icon: Home },
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/assistant", label: "Kamra Agent", icon: Sparkles },
-      { to: "/reservations", label: "Reservations", icon: ClipboardList },
-      { to: "/crs", label: "Central Reservations", icon: Search },
-      { to: "/tape", label: "Tape Chart", icon: LayoutGrid },
-      { to: "/calendar", label: "Calendar", icon: CalendarDays },
-      { to: "/guests", label: "Guests", icon: Users },
-      { to: "/room-blocks", label: "Room Blocks", icon: Lock },
+      // "Kamra Agent" rebrands to a 25-character name that wraps in the rail
+      { to: "/assistant", label: "AI Agent", icon: Sparkles },
+      { to: "/reservations", label: "Reservations", icon: ClipboardList, group: "Bookings" },
+      { to: "/crs", label: "Central Reservations", icon: MapPin, group: "Bookings" },
+      { to: "/guests", label: "Guests", icon: Users, group: "Bookings" },
+      { to: "/tape", label: "Tape Chart", icon: ChartGantt, group: "Availability" },
+      { to: "/calendar", label: "Calendar", icon: CalendarDays, group: "Availability" },
+      { to: "/room-blocks", label: "Room Blocks", icon: Lock, group: "Availability" },
     ],
     extraPrefixes: ["/grc", "/cancelled", "/agents"],
   },
@@ -194,15 +198,15 @@ export const APPS: AppDef[] = [
     roles: ["Revenue Manager", "Hotel Admin", "System Manager", "Administrator"],
     items: [
       { to: "/revenue-reports", label: "Revenue Reports", icon: ChartLine },
-      { to: "/channel-manager", label: "Channel Manager", icon: Share2 },
-      { to: "/ota-mappings", label: "OTA Room Mappings", icon: Network },
-      { to: "/rate-plans", label: "Rate Plans", icon: Tags },
-      { to: "/seasons", label: "Seasons", icon: CalendarDays },
-      { to: "/guardrails", label: "Guardrails", icon: ShieldCheck },
-      { to: "/vouchers", label: "Vouchers", icon: BadgePercent },
-      { to: "/meal-plans", label: "Meal Plans", icon: UtensilsCrossed },
-      { to: "/travel-agents", label: "Travel Agents", icon: Briefcase },
-      { to: "/companies", label: "Companies", icon: Building2 },
+      { to: "/rate-plans", label: "Rate Plans", icon: Tags, group: "Pricing" },
+      { to: "/seasons", label: "Seasons", icon: CalendarDays, group: "Pricing" },
+      { to: "/guardrails", label: "Guardrails", icon: ShieldCheck, group: "Pricing" },
+      { to: "/vouchers", label: "Vouchers", icon: BadgePercent, group: "Pricing" },
+      { to: "/meal-plans", label: "Meal Plans", icon: UtensilsCrossed, group: "Pricing" },
+      { to: "/channel-manager", label: "Channel Manager", icon: Share2, group: "Distribution" },
+      { to: "/ota-mappings", label: "OTA Room Mappings", icon: Network, group: "Distribution" },
+      { to: "/travel-agents", label: "Travel Agents", icon: Briefcase, group: "Partners" },
+      { to: "/companies", label: "Companies", icon: Building2, group: "Partners" },
     ],
   },
   {
@@ -260,34 +264,38 @@ export const APPS: AppDef[] = [
     roles: ["Hotel Admin", "System Manager", "Administrator"],
     items: [
       { to: "/settings", label: "Settings", icon: SettingsIcon },
-      { to: "/health", label: "System Health", icon: HeartPulse },
-      { to: "/rooms", label: "Rooms", icon: BedDouble },
-      { to: "/room-types", label: "Room Types", icon: LayoutGrid },
-      { to: "/activity", label: "Activity Log", icon: ScrollText },
-      { to: "/marketplace", label: "Marketplace", icon: Store },
-      {
-        to: "/developers",
-        label: "Developers",
-        icon: Code2,
-        roles: ["System Manager", "Administrator"],
-      },
+      { to: "/rooms", label: "Rooms", icon: BedDouble, group: "Property" },
+      { to: "/room-types", label: "Room Types", icon: LayoutGrid, group: "Property" },
       {
         to: "/setup",
         label: "New Property",
         icon: Plus,
         roles: ["System Manager", "Administrator"],
+        group: "Property",
+      },
+      { to: "/health", label: "System Health", icon: HeartPulse, group: "System" },
+      { to: "/activity", label: "Activity Log", icon: ScrollText, group: "System" },
+      { to: "/marketplace", label: "Marketplace", icon: Store, group: "System" },
+      {
+        to: "/developers",
+        label: "Developers",
+        icon: Code2,
+        roles: ["System Manager", "Administrator"],
+        group: "System",
       },
       {
         href: `${DESK}/app/user`,
         label: "Manage Users",
         icon: UserCog,
         roles: ["Administrator", "System Manager"],
+        group: "System",
       },
       {
         href: `${DESK}/app/build`,
         label: "Biz Desk",
-        icon: ExternalLink,
+        icon: AppWindow,
         roles: ["Administrator", "System Manager"],
+        group: "System",
       },
     ],
   },
