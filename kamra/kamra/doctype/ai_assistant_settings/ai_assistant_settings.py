@@ -5,4 +5,9 @@ from frappe.model.document import Document
 
 
 class AIAssistantSettings(Document):
-	pass
+	def validate(self):
+		# the key and guest data go to base_url, so only listed hosts
+		from kamra.assistant import check_base_url
+
+		if self.base_url:
+			self.base_url = check_base_url(self.base_url)

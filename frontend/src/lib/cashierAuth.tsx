@@ -94,11 +94,10 @@ export function CashierAuthProvider({ children }: { children: ReactNode }) {
   const ensureUnlocked = useCallback(() => {
     return new Promise<void>((resolve, reject) => {
       void (async () => {
-        const s =
-          status ??
-          (await call<PinStatus>("kamra.api.cashier_pin_status", {
-            property: getCurrentProperty(),
-          }).catch(() => null))
+        // ask fresh: a cached "unlocked" outlives the 15-minute window
+        const s = await call<PinStatus>("kamra.api.cashier_pin_status", {
+          property: getCurrentProperty(),
+        }).catch(() => status)
         if (s) setStatus(s)
         if (!s?.required || s.unlocked) {
           resolve()

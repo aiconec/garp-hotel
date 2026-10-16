@@ -18,6 +18,8 @@ _CONTACT_KEY_TOKENS = (
 	"gstin",
 	"pan",
 	"contact_no",
+	# a pre-check-in link token opens the guest's self check-in
+	"token",
 )
 
 
