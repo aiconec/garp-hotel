@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
+from kamra.localization import format_money
 from frappe.model.document import Document
 from frappe.utils import nowdate
 
@@ -68,5 +69,5 @@ class POSOrder(Document):
 		from kamra.savings import log_action
 		log_action("post_pos_order", "POS Order", self.name, self.property,
 		           minutes_saved=5 if self.source in ("AI Agent", "QR") else 0,
-		           rationale=f"₹{self.order_total:,.0f} {detail} → {folio.name}",
+		           rationale=f"{format_money(self.property, self.order_total, 0)} {detail} → {folio.name}",
 		           channel="API")

@@ -213,19 +213,19 @@ export default function Billing() {
                     className="cursor-pointer hover:bg-zinc-50"
                     onClick={() => navigate(`/billing/${encodeURIComponent(f.name)}`)}
                   >
-                    <td className="py-2.5 pr-4 font-medium">{f.name}</td>
-                    <td className="py-2.5 pr-4">{String(f.guest_name ?? "-")}</td>
-                    <td className="py-2.5 pr-4">
+                    <td className="whitespace-nowrap py-2.5 pr-4 font-medium">{f.name}</td>
+                    <td className="whitespace-nowrap py-2.5 pr-4">{String(f.guest_name ?? "-")}</td>
+                    <td className="whitespace-nowrap py-2.5 pr-4">
                       <Badge tone={f.status === "Open" ? "amber" : "green"}>
                         {t(String(f.status))}
                       </Badge>
                     </td>
-                    <td className="py-2.5 pr-4 text-zinc-500">
+                    <td className="whitespace-nowrap py-2.5 pr-4 text-zinc-500">
                       {String(f.invoice_number ?? "-")}
                     </td>
-                    <td className="py-2.5 pr-4">{cur()}{inr(f.grand_total)}</td>
-                    <td className="py-2.5 pr-4">{cur()}{inr(f.payments_total)}</td>
-                    <td className="py-2.5 pr-4 font-medium">
+                    <td className="whitespace-nowrap py-2.5 pr-4">{cur()}{inr(f.grand_total)}</td>
+                    <td className="whitespace-nowrap py-2.5 pr-4">{cur()}{inr(f.payments_total)}</td>
+                    <td className="whitespace-nowrap py-2.5 pr-4 font-medium">
                       {Number(f.balance) > 0 ? (
                         <span className="text-amber-600">{cur()}{inr(f.balance)}</span>
                       ) : (

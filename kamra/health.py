@@ -56,6 +56,9 @@ def _cmp_semver(a: str, b: str) -> int | None:
 
 
 def _fetch_github_latest() -> dict:
+	# GARP Hotel: GARP ships releases itself, so a tenant site never asks
+	# GitHub about versions and its admins are never told to upgrade.
+	return {"ok": False, "error": "update checks are managed by BizConnect.id"}
 	cached = frappe.cache.get_value(CACHE_KEY)
 	if isinstance(cached, dict):
 		return cached
@@ -162,11 +165,11 @@ def _frappe_check() -> dict:
 	major = int(str(ver).split(".")[0]) if str(ver)[0:1].isdigit() else 0
 	if major and major < 16:
 		status = "attention"
-		detail = f"Frappe {ver} — BizConnect.id Hotel targets Frappe v16."
+		detail = f"Framework {ver} — BizConnect.id Hotel targets v16."
 	else:
 		status = "passed"
-		detail = f"Frappe {ver}."
-	return _check("frappe", "Frappe", status, detail)
+		detail = f"Framework {ver}."
+	return _check("frappe", "Framework", status, detail)
 
 
 def _apps_check() -> dict:
@@ -186,7 +189,7 @@ def _apps_check() -> dict:
 		"apps",
 		"Installed apps",
 		"passed",
-		f"kamra + frappe present.{extra}",
+		f"Required apps present.{extra}",
 	)
 
 
@@ -230,9 +233,7 @@ def _version_check(latest: dict) -> dict:
 			"version",
 			"Version",
 			"info",
-			f"Installed {installed}. Could not reach GitHub "
-			f"({latest.get('error') or 'unknown'}).",
-			link=url,
+			f"Installed {installed}. Updates are managed by BizConnect.id.",
 		)
 	cmp = _cmp_semver(installed, tag)
 	if cmp is None:
@@ -270,21 +271,8 @@ def _version_check(latest: dict) -> dict:
 
 
 def _upgrade_payload() -> dict:
-	return {
-		"docs": "https://github.com/aiconec/garp-hotel/blob/develop/docs/self-hosting.md",
-		"releases": GITHUB_RELEASES,
-		"docker_latest": "ghcr.io/kamra-pms/kamra:latest",
-		"docker_nightly": "ghcr.io/kamra-pms/kamra:nightly",
-		"bench": (
-			"bench get-app kamra https://github.com/aiconec/garp-hotel "
-			"--branch develop && bench --site <site> migrate && bench build "
-			"--app kamra && bench restart"
-		),
-		"note": (
-			"BizConnect.id Hotel does not auto-upgrade the site from this screen. "
-			"On BizConnect.id the platform ships new versions; ask BizConnect.id support."
-		),
-	}
+	# Tenants don't upgrade their own site; BizConnect.id rolls releases out.
+	return {"note": "BizConnect.id rolls out new versions of BizConnect.id Hotel for you."}
 
 
 def _is_behind(latest: dict) -> bool:

@@ -90,6 +90,7 @@ class Reservation(Document):
 		self.nights = date_diff(self.check_out_date, self.check_in_date)
 		self.validate_minimum_nights()
 		self.validate_status_transition()
+		self.validate_guest_scope()
 		self.validate_blacklist()
 		self.validate_occupancy()
 		self.validate_room_belongs_to_type()
@@ -205,6 +206,14 @@ class Reservation(Document):
 			.format(formatdate(self.check_in_date)),
 			title=_("Check-in date is in the past"),
 		)
+
+	def validate_guest_scope(self):
+		"""A user limited to some properties may only book (or re-point a
+		stay to) a guest they may see - otherwise the stay would make another
+		property's guest, and their ID documents, readable to them."""
+		if self.guest and (self.is_new() or self.has_value_changed("guest")):
+			from kamra.authz import assert_guest_access
+			assert_guest_access(self.guest)
 
 	def validate_blacklist(self):
 		if not self.guest or not self.is_new():

@@ -34,10 +34,12 @@ export function StatCard({
   className?: string
 }) {
   const down = delta?.dir === "down"
+  // amounts like Rp125.400.000 scale down to the card; short counts keep full size
+  const long = typeof value === "string" && value.length > 8
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col rounded-xl border border-zinc-200 bg-white p-4",
+        "@container flex min-w-0 flex-col rounded-xl border border-zinc-200 bg-white p-4",
         className,
       )}
     >
@@ -49,11 +51,14 @@ export function StatCard({
           {label}
         </span>
       </div>
-      <div className="mt-2.5 flex items-end justify-between gap-2">
+      {/* Long amounts (Rp12.500.000) shrink with the card instead of running
+          under the sparkline, which drops below the number when both don't fit. */}
+      <div className="mt-2.5 flex flex-wrap items-end justify-between gap-x-2 gap-y-1">
         <div className="min-w-0">
           <div
             className={cn(
-              "text-2xl font-semibold tracking-tight tabular-nums",
+              "whitespace-nowrap font-semibold tracking-tight tabular-nums",
+              long ? "text-[length:min(1.5rem,13cqi)]" : "text-2xl",
               accent ? "text-brand-700" : "text-zinc-900",
             )}
           >

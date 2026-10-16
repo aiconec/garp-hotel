@@ -21,7 +21,7 @@ import {
   Mail,
   Plus,
   Printer,
-  Receipt,
+  ReceiptText,
   ShieldCheck,
   Trash2,
   Users,
@@ -1757,7 +1757,7 @@ function MoneyTab({
         <CardHeader>
           <CardTitle>
             <span className="inline-flex items-center gap-1.5">
-              <Receipt className="size-4" />
+              <ReceiptText className="size-4" />
               Receipts
             </span>
           </CardTitle>

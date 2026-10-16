@@ -1,6 +1,13 @@
 import { useEffect, useId, useState } from "react"
 import { updateResource, serverError } from "../lib/resource"
+import { locale } from "../lib/money"
 import { Button } from "./ui/button"
+
+// the property's own nationality first (from its country pack), then the
+// guests Indonesian hotels see most
+const COMMON = ["Indonesian", "Malaysian", "Singaporean", "Australian", "Chinese",
+  "Japanese", "Korean", "Indian", "American", "British", "Dutch", "German",
+  "French", "Saudi", "UAE", "Other"]
 
 const inputCls =
   "rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm " +
@@ -18,12 +25,12 @@ export default function EditableNationality(props: {
   const variant = props.variant ?? "inline"
   const displayed = props.value?.trim() || "—"
   const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(props.value ?? "Indian")
+  const [val, setVal] = useState(props.value ?? locale().default_nationality)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!editing) setVal(props.value ?? "Indian")
+    if (!editing) setVal(props.value ?? locale().default_nationality)
   }, [props.value, editing])
 
   async function save() {
@@ -43,7 +50,7 @@ export default function EditableNationality(props: {
   }
 
   function startEdit() {
-    setVal(props.value ?? "Indian")
+    setVal(props.value ?? locale().default_nationality)
     setError(null)
     setEditing(true)
   }
@@ -58,7 +65,7 @@ export default function EditableNationality(props: {
         list={listId}
       />
       <datalist id={listId}>
-        {["Indian", "American", "British", "Canadian", "Australian", "German", "French", "Japanese", "Chinese", "Singaporean", "UAE", "Other"].map(
+        {[...new Set([locale().default_nationality, ...COMMON])].filter(Boolean).map(
           (n) => (
             <option key={n} value={n} />
           ),

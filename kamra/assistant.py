@@ -51,7 +51,7 @@ Rules:
 - Before cancelling, run the cancellation preview and state the fee.
 - Confirm irreversible actions (cancel, checkout with balance, voiding a
   charge) in one short question before calling the tool.
-- Be brief and concrete - front desk answers, not essays. Amounts in ₹.
+- Be brief and concrete - front desk answers, not essays. Amounts in the property's currency.
 {extra}"""
 
 # tool name → (kamra.api function, description, JSON-schema params,
@@ -407,6 +407,21 @@ TOOLS = {
 }
 
 
+def ai_allowed() -> bool:
+	"""The in-app assistant runs only where GARP's site config sets
+	`kamra_ai_enabled`. Its tools can take payments and cancel stays on a
+	model's say-so, and guest-written text reaches the model, so it stays off
+	whatever a Hotel Admin sets in Settings until those tools need a person's
+	approval."""
+	return bool(frappe.conf.get("kamra_ai_enabled"))
+
+
+def _assert_ai_allowed():
+	if not ai_allowed():
+		frappe.throw("The AI assistant isn't available on this site.",
+		             frappe.PermissionError)
+
+
 def _settings(property: str):
 	name = frappe.db.get_value(
 		"AI Assistant Settings", {"property": property})
@@ -423,7 +438,8 @@ def assistant_status(property: str):
 	key_hint = ("••••" + key[-4:]) if key and len(key) >= 4 else None
 	base = (s.base_url if s else None) or "https://api.openai.com/v1"
 	return {
-		"enabled": bool(s and s.enabled and key),
+		"allowed": ai_allowed(),
+		"enabled": bool(ai_allowed() and s and s.enabled and key),
 		"model": (s.model if s else None) or "gpt-4o-mini",
 		"base_url": base,
 		"key_hint": key_hint,
@@ -506,6 +522,7 @@ def test_connection(property: str, base_url: str | None = None,
                     model: str | None = None, api_key: str | None = None):
 	"""One cheap Chat Completions call with no tools. Returns the provider
 	error text when it fails so Setup is diagnosable."""
+	_assert_ai_allowed()
 	import time
 
 	s = _settings(property)
@@ -661,6 +678,7 @@ def ask(property: str, messages):
 	"""One Kamra Agent turn: history in, answer out. The model may call
 	governed tools along the way; every call is returned so the UI can
 	show what actually happened."""
+	_assert_ai_allowed()
 	s = _settings(property)
 	if not (s and s.enabled):
 		frappe.throw("The AI assistant is not enabled for this property - "
@@ -728,6 +746,7 @@ def ask_stream(property: str, messages):
 
 	Events: action {tool, ok} · token {text} · error {message} · done {}
 	"""
+	_assert_ai_allowed()
 	from werkzeug.wrappers import Response
 
 	s = _settings(property)
@@ -850,8 +869,8 @@ What BizConnect.id Hotel does and where to find it:
   post charges, cancel, and watch the waitlist. This help assistant only
   explains how to do things yourself.
 
-Be brief and practical. Use short steps. If you're unsure, say so and point to
-the docs (github.com/aiconec/garp-hotel/tree/develop/docs)."""
+Be brief and practical. Use short steps. If you're unsure, say so and suggest
+asking the hotel's system admin."""
 
 
 @frappe.whitelist(methods=["POST"])
@@ -860,6 +879,7 @@ def help_ask(property: str, messages):
 	"""Streaming how-to help (SSE). No tools, no data access - just explains
 	how to use Kamra, grounded in the app's features. Reuses the property's
 	AI key. Events: token {text} · error {message} · done {}."""
+	_assert_ai_allowed()
 	from werkzeug.wrappers import Response
 
 	s = _settings(property)

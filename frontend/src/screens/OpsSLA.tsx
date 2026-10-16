@@ -171,7 +171,7 @@ export default function OpsSLA() {
             ))}
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 xl:grid-cols-2 [&>*]:min-w-0">
             <GroupTable title="By category" rows={data.by_category} />
             <GroupTable title="By priority" rows={data.by_priority} />
           </div>

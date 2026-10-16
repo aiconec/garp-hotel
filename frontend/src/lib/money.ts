@@ -1,5 +1,5 @@
 /*  Currency and tax vocabulary, from the property's localization pack. Loaded
-    once per session; defaults keep India output identical until it resolves.
+    once per session; defaults are Indonesian until it resolves.
     The last resolved locale is kept in localStorage so screens render with
     the right symbol immediately on reload, before the network answers. */
 
@@ -35,16 +35,17 @@ export interface Integrations {
   verify_guest_id: boolean
 }
 
+// GARP Hotel: Indonesian defaults until the property's pack answers
 let cache: Locale = {
-  currency_symbol: "₹",
-  locale: "en-IN",
-  currency: "INR",
-  tax_label: "GST",
-  tax_id_label: "GSTIN",
-  tax_rates: [0, 5, 12, 18, 28],
-  id_types: ["Aadhaar", "Passport", "Driving License", "Voter ID", "PAN", "Other"],
-  payment_modes: ["Cash", "Card", "UPI", "Bank Transfer"],
-  default_nationality: "Indian",
+  currency_symbol: "Rp",
+  locale: "id-ID",
+  currency: "IDR",
+  tax_label: "PB1",
+  tax_id_label: "NPWP",
+  tax_rates: [0, 10, 11, 12],
+  id_types: ["Passport", "National ID", "Driving License", "Other"],
+  payment_modes: ["Cash", "Card", "Bank Transfer"],
+  default_nationality: "Indonesian",
   adult_age: 18,
   minor_ids: "foreign",
   integrations: {
@@ -61,7 +62,7 @@ try {
   const saved = JSON.parse(localStorage.getItem("kamra_locale") || "")
   if (saved && saved.currency_symbol) cache = { ...cache, ...saved }
 } catch {
-  /* first run - Indian defaults until the pack resolves */
+  /* first run - Indonesian defaults until the pack resolves */
 }
 
 function remember() {
@@ -98,7 +99,7 @@ export function adoptUiLocale(ui?: { currency_symbol?: string; locale?: string }
 }
 
 export const locale = () => cache
-/** The property's currency symbol, e.g. "₹" or "Rp". */
+/** The property's currency symbol, e.g. "Rp" or "RM". */
 export const cur = () => cache.currency_symbol
 /** The number-formatting locale, e.g. "en-IN" (lakhs) or "id-ID". */
 export const moneyLocale = () => cache.locale

@@ -543,6 +543,8 @@ export const reservationsConfig: ScreenConfig = {
       label: "Status",
       options: [
         "Waitlist",
+        "Held",
+        "Requested",
         "Confirmed",
         "Checked In",
         "Checked Out",
@@ -673,7 +675,7 @@ export const channelConnectionsConfig: ScreenConfig = {
   ],
   form: [
     { field: "channel", label: "Channel", type: "select", options: ["WhatsApp", "Voice", "SMS"], required: true },
-    { field: "provider", label: "Provider", type: "select", options: ["Meta Business", "HeyKoala", "Twilio", "Retell", "Vapi", "Custom"], required: true },
+    { field: "provider", label: "Provider", type: "select", options: ["Meta Business", "Twilio", "Retell", "Vapi", "Custom"], required: true },
     { field: "phone_number", label: "Phone number (display)", type: "data" },
     { field: "external_account_id", label: "Meta phone number ID", type: "data", hint: "From Meta Business Manager > WhatsApp > API setup" },
     { field: "credentials", label: "Access token", type: "data", hint: "Permanent Cloud API token - stored encrypted" },

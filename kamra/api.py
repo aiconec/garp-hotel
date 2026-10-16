@@ -8,8 +8,9 @@ import json
 import math
 
 import frappe
+from kamra.localization import format_money
 from frappe import _
-from frappe.utils import add_days, get_datetime, getdate, now_datetime, nowdate
+from frappe.utils import add_days, cint, get_datetime, getdate, now_datetime, nowdate
 
 from kamra.authz import require_it_admin, require_roles
 
@@ -100,6 +101,31 @@ def generate_api_key():
 	return {"api_key": doc.api_key, "api_secret": api_secret}
 
 
+# Staff uploads land in public files on the tenant's own domain, so only
+# media we can recognise by its bytes is kept - an "image" that is really
+# HTML or SVG would run with whoever opens the link's session.
+_MEDIA_SIGNATURES = {
+	"jpg": lambda b: b[:3] == b"\xff\xd8\xff",
+	"png": lambda b: b[:8] == b"\x89PNG\r\n\x1a\n",
+	"webp": lambda b: b[:4] == b"RIFF" and b[8:12] == b"WEBP",
+	"mp4": lambda b: b[4:8] == b"ftyp",
+	"mov": lambda b: b[4:8] in (b"ftyp", b"moov", b"wide", b"mdat"),
+	"webm": lambda b: b[:4] == b"\x1a\x45\xdf\xa3",
+}
+IMAGE_TYPES = ("jpg", "png", "webp")
+MEDIA_TYPES = IMAGE_TYPES + ("mp4", "mov", "webm")
+
+
+def _safe_media_name(filename: str, content: bytes, allowed=IMAGE_TYPES) -> str:
+	"""A generated file name for an upload whose bytes match an allowed
+	type; anything else is refused."""
+	ext = (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
+	ext = "jpg" if ext == "jpeg" else ext
+	if ext not in allowed or not _MEDIA_SIGNATURES[ext](content or b""):
+		frappe.throw("Upload a " + ", ".join(t.upper() for t in allowed) + " file.")
+	return f"{frappe.generate_hash(length=12)}.{ext}"
+
+
 @frappe.whitelist()
 @require_roles("Front Desk", "Kamra Agent", "Hotel Admin", "System Manager")
 def upload_room_image():
@@ -109,8 +135,10 @@ def upload_room_image():
 	if "file" not in files:
 		frappe.throw("No file uploaded.")
 	file = files["file"]
-	filename = file.filename
 	content = file.stream.read()
+	if len(content) > 10 * 1024 * 1024:
+		frappe.throw("Image is too large - keep it under 10 MB.")
+	filename = _safe_media_name(file.filename, content, IMAGE_TYPES)
 
 	from frappe.utils.file_manager import save_file
 	saved = save_file(filename, content, None, None, is_private=0)
@@ -205,7 +233,7 @@ def set_room_rate(property: str, room_type: str, start_date: str,
 			frappe.throw(
 				f"Blocked by the hurdle rate: occupancy for {day} is "
 				f"{tier['occupancy']:.0f}%, so the minimum sell rate is "
-				f"₹{tier['min_rate']:,.0f} - ₹{rate:,.0f} undercuts it."
+				f"{format_money(property, tier['min_rate'], 0)} - {format_money(property, rate, 0)} undercuts it."
 			)
 
 	from frappe.utils import date_diff
@@ -231,7 +259,7 @@ def set_room_rate(property: str, room_type: str, start_date: str,
 	from kamra.savings import log_action
 	log_action("set_room_rate", "Season", season.name, property,
 	           minutes_saved=6, rationale=reason or (
-	               f"Set {room_type.split('-')[-1]} rate ₹{rate:,.0f} "
+	               f"Set {room_type.split('-')[-1]} rate {format_money(property, rate, 0)} "
 	               f"for {start_date}→{end_date}"))
 	return {
 		"season": season.name, "rate": rate,
@@ -1033,11 +1061,12 @@ def hk_upload_media(task: str):
 	content = f.stream.read()
 	if len(content) > 25 * 1024 * 1024:
 		frappe.throw("File is too large - keep photos/videos under 25 MB.")
+	file_name = _safe_media_name(f.filename, content, MEDIA_TYPES)
 	# endpoint-gated (Kamra authorizes on the route, not the doctype), so the
 	# File is created ignore_permissions and attached to the task.
 	saved = frappe.get_doc({
 		"doctype": "File",
-		"file_name": f.filename,
+		"file_name": file_name,
 		"content": content,
 		"attached_to_doctype": "Housekeeping Task",
 		"attached_to_name": task,
@@ -1207,7 +1236,7 @@ def hk_post_consumable(room: str, charge_type: str, description: str,
 		frappe.set_user(me)  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
 	from kamra.savings import log_action
 	log_action("hk_charge", "Folio", out.get("folio"), res.property,
-	           rationale=f"{charge_type} ₹{amount} to {room} ({description})")
+	           rationale=f"{charge_type} {format_money(res.property, amount)} to {room} ({description})")
 	return {"ok": True, "folio": out.get("folio"), "balance": out.get("balance")}
 
 
@@ -1355,7 +1384,7 @@ def _post_folio_charge(folio: str, charge_type: str, description: str,
 		frappe.log_error(title="ledger charge write failed")
 	from kamra.savings import log_action
 	log_action("post_charge", "Folio", doc.name, doc.property,
-	           rationale=f"{charge_type}: {description} ₹{amount}")
+	           rationale=f"{charge_type}: {description} {format_money(doc.property, amount)}")
 	return doc.as_dict()
 
 
@@ -1439,7 +1468,7 @@ def refund_folio_payment(folio: str, amount: float, mode: str,
 	refunded = -sum(float(p.amount or 0) for p in doc.payments
 	                if float(p.amount or 0) < 0)
 	if float(amount) > received - refunded:
-		frappe.throw(f"Only ₹{received - refunded:,.2f} was collected on "
+		frappe.throw(f"Only {format_money(doc.property, received - refunded)} was collected on "
 		             "this folio - can't refund more than that.")
 	from kamra.business_date import get_business_date
 	from kamra.cashier import record_cashier_txn, require_open_session
@@ -1742,7 +1771,7 @@ def split_folio_charge(from_folio: str, charge_row: str, to_folio: str,
 	                   amount=float(amount) if amount else None)
 	from kamra.savings import log_action
 	log_action("split_charge", "Folio", to_folio,
-	           rationale=f"Split ₹{out['moved']:,.2f} of {charge_row} "
+	           rationale=f"Split {format_money(frappe.db.get_value('Folio', to_folio, 'property'), out['moved'])} of {charge_row} "
 	                     f"{from_folio} → {to_folio}")
 	return out
 
@@ -1830,7 +1859,7 @@ def post_allowance(folio: str, amount: float, reason: str,
 	_allow(folio, float(amount), reason, float(gst_rate or 0))
 	from kamra.savings import log_action
 	log_action("allowance", "Folio", folio,
-	           rationale=f"Allowance ₹{abs(float(amount)):,.2f}: {reason}")
+	           rationale=f"Allowance {format_money(frappe.db.get_value('Folio', folio, 'property'), abs(float(amount)))}: {reason}")
 	return {"ok": True, "folio": folio}
 
 
@@ -2013,11 +2042,17 @@ def _invoice_guest(res) -> dict:
 	}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 @require_roles("Front Desk", "Finance", "Kamra Agent")
 def run_night_audit(property: str, business_date: str | None = None):
 	# Night audit is a front-desk / night-auditor ritual, not admin-only.
+	# Closing any other day than the current business date (catching up a
+	# missed one) is a finance decision. POST only: the audit commits, so a
+	# link must not be able to run it.
+	from kamra.business_date import get_business_date
 	from kamra.folio import run_night_audit as _run
+	if business_date and str(getdate(business_date)) != get_business_date(property):
+		frappe.only_for(("Finance", "Hotel Admin", "System Manager"))
 	return _run(property, business_date)
 
 
@@ -2187,10 +2222,11 @@ def guest_journey(guest: str):
 			"check_in_date", "check_out_date", "nights", "adults", "children",
 			"amount_after_tax", "discount_amount", "special_requests",
 			"booking_type", "company", "creation",
-			"actual_check_in", "actual_check_out",
+			"actual_check_in", "actual_check_out", "property",
 		],
 		order_by="check_in_date desc",
 	)
+
 
 	live = [r for r in reservations if r.status != "Cancelled"]
 	stats = {
@@ -2224,7 +2260,7 @@ def guest_journey(guest: str):
 			timeline.append({
 				"ts": str(r.actual_check_out), "type": "check_out",
 				"title": "Checked out",
-				"detail": f"Folio ₹{float(r.amount_after_tax or 0):,.0f}",
+				"detail": f"Folio {format_money(r.property, r.amount_after_tax, 0)}",
 				"reference": r.name,
 			})
 		if r.status == "Cancelled":
@@ -2248,9 +2284,11 @@ def guest_journey(guest: str):
 			order_by="creation desc",
 			limit=50,
 		):
+			# agent_name is null when a person did it; the channel badge says where
+			action = log.action_type.replace("_", " ")
 			timeline.append({
 				"ts": str(log.creation), "type": "agent",
-				"title": f"{log.agent_name} · {log.action_type.replace('_', ' ')}",
+				"title": f"{log.agent_name} · {action}" if log.agent_name else action.capitalize(),
 				"detail": log.rationale or "",
 				"channel": log.action_channel,
 			})
@@ -3845,7 +3883,7 @@ def amend_stay(reservation: str, check_in_date: str, check_out_date: str):
 	from kamra.savings import log_action
 	log_action("amend_stay", "Reservation", doc.name, doc.property,
 	           rationale=f"{old} → {check_in_date}→{check_out_date}; "
-	                     f"new total ₹{doc.amount_after_tax or 0:,.0f}")
+	                     f"new total {format_money(doc.property, doc.amount_after_tax or 0, 0)}")
 	return {"ok": True, "nights": doc.nights,
 	        "amount_after_tax": doc.amount_after_tax}
 
@@ -3921,11 +3959,16 @@ def get_quote(property: str, room_type: str, check_in_date: str,
 
 
 def _find_or_create_guest(guest_name: str, phone: str | None,
-                          property: str | None = None):
-	if phone:
-		existing = frappe.db.get_value("Guest", {"phone": phone})
-		if existing:
-			return existing
+                          property: str | None = None, reuse: bool = True):
+	# Reuse a profile with this phone only when the caller may see it. A user
+	# limited to some properties would otherwise attach another property's
+	# guest to a stay of theirs and then read that guest's ID documents.
+	if phone and reuse:
+		from kamra.authz import guest_visible
+		for existing in frappe.get_all("Guest", filters={"phone": phone},
+		                               pluck="name", order_by="creation asc"):
+			if guest_visible(existing):
+				return existing
 	parts = guest_name.strip().split(" ", 1)
 	# the likely nationality follows the property's country, not India's
 	from kamra.localization import pack_for
@@ -3967,7 +4010,8 @@ def create_booking(property: str, room_type: str, check_in_date: str,
                    room: str | None = None,
                    status: str | None = None,
                    idempotency_key: str | None = None,
-                   hold_expires_on: str | None = None):
+                   hold_expires_on: str | None = None,
+                   new_guest: int = 0):
 	"""One-call booking: attach to an existing guest profile when given,
 	else dedup by phone / create one. Optional auto room assignment,
 	voucher applied, price computed by the engine.
@@ -3999,8 +4043,13 @@ def create_booking(property: str, room_type: str, check_in_date: str,
 	if guest:
 		if not frappe.db.exists("Guest", guest):
 			frappe.throw(f"Guest profile {guest} not found.")
+		from kamra.authz import assert_guest_access
+		assert_guest_access(guest)
 	else:
-		guest = _find_or_create_guest(guest_name, phone, property)
+		# new_guest: the public booking page never attaches to (or rewrites)
+		# an existing profile - the desk merges duplicates it flags
+		guest = _find_or_create_guest(guest_name, phone, property,
+		                              reuse=not cint(new_guest))
 	if guest_category:
 		frappe.db.set_value("Guest", guest, "guest_category", guest_category)
 		if guest_category == "VIP":
@@ -4748,13 +4797,18 @@ def linked_records(doctype: str, name: str):
 		out["folios"] = folios_for(
 			{"group_booking": name, "folio_type": "Group"})
 	elif doctype == "Guest":
+		from kamra.authz import assert_guest_access, restricted_properties
+		assert_guest_access(name)
+		# a chain guest's stays and bills at other properties stay private
+		allowed = restricted_properties()
+		scope = {"property": ("in", sorted(allowed) or [""])} if allowed is not None else {}
 		out["guest"] = name
 		out["guest_name"] = frappe.db.get_value("Guest", name, "full_name")
 		out["reservations"] = frappe.get_all("Reservation",
-			filters={"guest": name},
+			filters={"guest": name, **scope},
 			fields=["name", "status", "check_in_date"],
 			order_by="check_in_date desc", limit=5)
-		out["folios"] = folios_for({"guest": name})[-5:]
+		out["folios"] = folios_for({"guest": name, **scope})[-5:]
 	if out["group_booking"] and not out.get("group_name"):
 		out["group_name"] = frappe.db.get_value(
 			"Group Booking", out["group_booking"], "group_name")

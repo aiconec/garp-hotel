@@ -144,7 +144,7 @@ export default function BanquetMonth() {
                   sticky columns land inside a normal desktop width, so the
                   month reads in one look instead of two scrolls. */}
               <div className="-mx-1 overflow-x-auto px-1">
-                <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
+                <table className="w-full min-w-[44rem] table-fixed border-separate border-spacing-0 text-sm">
                   <thead>
                     <tr>
                       <th className="sticky left-0 z-20 w-28 bg-white p-2 text-left text-[11px] font-medium uppercase tracking-wider text-zinc-500">

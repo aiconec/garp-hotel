@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import {
-  Camera, ArrowLeft, BedDouble, Plus, Printer, Receipt, Trash2 } from "lucide-react"
+  Camera, ArrowLeft, BedDouble, Plus, Printer, ReceiptText, Trash2 } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 import { call, getCurrentProperty } from "../lib/api"
 import EditableNationality from "../components/EditableNationality"
@@ -575,7 +575,7 @@ export default function RegistrationCard() {
               to={`/billing/${encodeURIComponent(d.money.folio)}`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
             >
-              <Receipt className="size-4" aria-hidden /> {t("Open bill")}
+              <ReceiptText className="size-4" aria-hidden /> {t("Open bill")}
             </Link>
           )}
           <Button onClick={() => window.print()}>

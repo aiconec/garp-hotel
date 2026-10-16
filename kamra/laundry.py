@@ -10,6 +10,7 @@ accident.
 """
 
 import frappe
+from kamra.localization import format_money
 from frappe import _
 from frappe.utils import add_to_date, get_datetime, now_datetime
 
@@ -340,7 +341,7 @@ def deliver_laundry(order: str, shortage_note: str | None = None):
 	if posted:
 		from kamra.savings import log_action
 		log_action("laundry_bill", "Laundry Order", doc.name, doc.property,
-		           rationale=f"₹{doc.total:,.0f} laundry → {doc.room} "
+		           rationale=f"{format_money(doc.property, doc.total, 0)} laundry → {doc.room} "
 		                     f"({doc.reservation})", channel="API")
 	return {"ok": True, "status": "Delivered", "posted_to_folio": posted,
 	        "total": doc.total}

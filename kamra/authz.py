@@ -87,18 +87,67 @@ def assert_record_access(doctype: str, name: str | None):
 			frappe.db.get_value(doctype, name, "property"))
 
 
-def assert_guest_access(guest: str | None):
+def guest_visible(guest: str | None, user: str | None = None) -> bool:
 	"""Guest profiles are shared across the chain, so a guest has no single
-	property. A restricted user may open one only if the guest has stayed
+	property. A restricted user may see one only if the guest has stayed
 	(or is booked) at one of their properties, or has no stays yet."""
-	allowed = restricted_properties()
+	allowed = restricted_properties(user)
 	if not guest or allowed is None:
-		return
+		return True
 	props = set(frappe.get_all("Reservation", filters={"guest": guest},
 	                           pluck="property", distinct=True))
-	if props and not props & allowed:
+	return not props or bool(props & allowed)
+
+
+def assert_guest_access(guest: str | None):
+	"""Refuse a guest profile the user may not see (see guest_visible)."""
+	if not guest_visible(guest):
 		frappe.throw("You don't have access to this guest.",
 		             frappe.PermissionError)
+
+
+# Money records (hooks._MONEY_DOCTYPES): only Kamra's own endpoints (PIN,
+# till, ledger, recalculated totals) may write them. Frappe's generic REST and
+# Desk form paths would let a desk role add payment rows or edit a till
+# directly, so those are refused.
+_GENERIC_WRITE_METHODS = {
+	"frappe.client.save", "frappe.client.insert", "frappe.client.insert_many",
+	"frappe.client.set_value", "frappe.client.submit", "frappe.client.cancel",
+	"frappe.client.delete", "frappe.client.bulk_update", "frappe.client.rename_doc",
+	"frappe.desk.form.save.savedocs", "frappe.desk.form.save.cancel",
+	"frappe.desk.reportview.delete_items", "frappe.desk.doctype.bulk_update.bulk_update.submit_cancel_or_update_docs",
+	"frappe.model.rename_doc.update_document_title",
+	"frappe.desk.form.utils.remove_attach",
+}
+
+
+def _generic_write_request() -> bool:
+	req = getattr(frappe.local, "request", None)
+	if not req:
+		return False  # scheduler, background job, console, migrate
+	path = req.path or ""
+	if path.startswith(("/api/resource/", "/api/v2/document/")):
+		return True
+	cmd = frappe.local.form_dict.get("cmd") or ""
+	for prefix in ("/api/method/", "/api/v2/method/"):
+		if path.startswith(prefix):
+			cmd = path[len(prefix):]
+	return cmd in _GENERIC_WRITE_METHODS
+
+
+def guard_money_write(doc, method=None):
+	"""doc_events validate/on_trash hook for MONEY_DOCTYPES."""
+	if frappe.flags.in_install or frappe.flags.in_migrate or frappe.flags.in_patch \
+			or frappe.flags.in_test or frappe.flags.in_import:
+		return
+	if not _generic_write_request():
+		return
+	if "System Manager" in frappe.get_roles() or frappe.session.user == "Administrator":
+		return
+	frappe.throw(
+		f"{doc.doctype} can only be changed from BizConnect.id Hotel's own screens.",
+		frappe.PermissionError,
+	)
 
 
 def guest_scope_sql(alias: str = "g") -> tuple[str, dict]:

@@ -82,25 +82,6 @@ def registry(property: str):
 			],
 		},
 		{
-			"category": "AI on your phone lines (HeyKoala)",
-			"blurb": "Kamra is agent-ready. HeyKoala is the AI that answers your "
-			         "phone and WhatsApp - it books, quotes and handles requests "
-			         "24x7 using Kamra's governed tools, and every action is "
-			         "logged. Connect a number to switch it on.",
-			"cards": [
-				_connector("HeyKoala Voice AI", "heykoala",
-				           "A phone number HeyKoala's AI concierge answers - "
-				           "books, quotes and answers, 24x7.",
-				           action="heykoala", channel="Voice",
-				           **_channel_status(property, "HeyKoala", "Voice")),
-				_connector("HeyKoala WhatsApp", "heykoala",
-				           "A WhatsApp number the AI answers - confirmations, "
-				           "pre-arrival check-in and guest requests.",
-				           action="heykoala", channel="WhatsApp",
-				           **_channel_status(property, "HeyKoala", "WhatsApp")),
-			],
-		},
-		{
 			"category": "Distribution",
 			"blurb": "Sync rates and availability across OTAs. Delivered as an "
 			         "enterprise integration tailored to your channel mix.",
@@ -182,8 +163,7 @@ def registry(property: str):
 			         "operate. Install the pack for your country.",
 			"cards": [
 				_module("India", "GST slabs, SAC, GSTIN, GSTR-1, e-invoice. "
-				        "Razorpay and Cashfree payment links; Kamra Verify "
-				        "(GSTIN lookup, Aadhaar / ID reading).",
+				        "Razorpay and Cashfree payment links.",
 				        detail="Included"),
 				_module("Indonesia",
 				        "PB1/PBJT regional hotel tax (flat, per-region rate), "
@@ -240,6 +220,8 @@ def connect_heykoala(property: str, channel: str, phone_number: str):
 	"""Wire a HeyKoala Voice/WhatsApp channel to this property. Creates (or
 	revives) the Channel Provider Connection, mints an inbound webhook secret,
 	and returns the URLs + secret ONCE so they can be pasted into HeyKoala."""
+	# GARP Hotel: HeyKoala is the vendor's own metered AI service; not offered.
+	frappe.throw("Not available.", frappe.PermissionError)
 	if channel not in ("Voice", "WhatsApp"):
 		frappe.throw("Channel must be Voice or WhatsApp.")
 	if not (phone_number or "").strip():

@@ -302,8 +302,8 @@ export function phoneLengthForDial(dial: string): { min: number; max: number } {
 }
 
 export function dialForCountry(country?: string | null): string {
-  const key = (country || "India").trim().toLowerCase()
-  return DIAL_BY_COUNTRY[key] || "91"
+  const key = (country || "Indonesia").trim().toLowerCase()
+  return DIAL_BY_COUNTRY[key] || "62"
 }
 
 /** Digits only, drop a leading trunk 0. */

@@ -164,7 +164,7 @@
    "label": "Column Break B"
   },
   {
-   "default": "India",
+   "default": "Indonesia",
    "fieldname": "country",
    "fieldtype": "Data",
    "label": "Country"
@@ -175,7 +175,7 @@
    "label": "Pincode"
   },
   {
-   "default": "Asia/Kolkata",
+   "default": "Asia/Jakarta",
    "fieldname": "timezone",
    "fieldtype": "Data",
    "label": "Timezone"
@@ -186,7 +186,7 @@
    "label": "Operations"
   },
   {
-   "default": "INR",
+   "default": "IDR",
    "fieldname": "currency",
    "fieldtype": "Link",
    "label": "Currency",

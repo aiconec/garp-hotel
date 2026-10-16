@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Download, Printer, ScrollText } from "lucide-react"
 
-import { banquet, type BanquetRegister, type RegisterRollup } from "../lib/api"
+import { banquet, withoutProperty, type BanquetRegister, type RegisterRollup } from "../lib/api"
 import { serverError } from "../lib/resource"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
@@ -237,7 +237,7 @@ function FunctionList({
               onClick={() => onOpen(r.name)}
               className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50"
             >
-              <td className="py-1.5 pr-3 font-mono text-xs text-zinc-400">
+              <td className="whitespace-nowrap py-1.5 pr-3 font-mono text-xs text-zinc-400">
                 {r.name}
               </td>
               <td className="py-1.5 pr-3 whitespace-nowrap tabular-nums">
@@ -250,8 +250,8 @@ function FunctionList({
                 )}
               </td>
               <td className="py-1.5 pr-3 text-zinc-600">
-                {r.venue}
-                <span className="text-zinc-400"> · {r.session}</span>
+                <div className="whitespace-nowrap">{withoutProperty(r.venue)}</div>
+                <div className="text-xs text-zinc-400">{r.session}</div>
               </td>
               <td className="py-1.5 pr-3 text-zinc-600">
                 {r.event_name || r.event_type}
