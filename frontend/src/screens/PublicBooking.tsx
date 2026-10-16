@@ -4,14 +4,23 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import {
   BedDouble,
   Check,
+  Clock,
   ExternalLink,
+  Eye,
   MapPin,
+  Minus,
+  Navigation,
   Phone,
+  Plus,
   Search,
+  ShieldCheck,
   Star,
   Users,
+  Wallet,
 } from "lucide-react"
 import { callGuest, getDefaultProperty } from "../lib/api"
+import { useT, tValue } from "../lib/i18n"
+import { setLang } from "../lib/dir"
 import { serverError } from "../lib/resource"
 import { accentVars } from "../lib/accents"
 import { Badge } from "../components/ui/badge"
@@ -147,6 +156,57 @@ function addDays(date: string, days: number) {
   return d.toISOString().slice(0, 10)
 }
 
+/** "Sat, 17 Oct" in the guest's language; a date-only ISO string is local. */
+function stayDate(iso: string, lang: string, weekday = false) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(
+    lang === "id" ? "id-ID" : "en-GB",
+    weekday
+      ? { weekday: "short", day: "numeric", month: "short" }
+      : { day: "numeric", month: "short" },
+  )
+}
+
+/** Guest count with − / + buttons, the same height as the date inputs. */
+function Stepper({
+  label,
+  value,
+  min,
+  max = 20,
+  onChange,
+  less,
+  more,
+}: {
+  label: string
+  value: number
+  min: number
+  max?: number
+  onChange: (n: number) => void
+  less: string
+  more: string
+}) {
+  const btn =
+    "flex size-9 items-center justify-center rounded-md text-zinc-600 " +
+    "hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-30"
+  return (
+    <div>
+      <span className="mb-1 block text-xs font-medium text-zinc-500">{label}</span>
+      <div className="flex items-center justify-between rounded-lg border border-zinc-300 bg-white px-1 py-1">
+        <button type="button" className={btn} aria-label={`${less}: ${label}`}
+          disabled={value <= min} onClick={() => onChange(value - 1)}>
+          <Minus className="size-4" aria-hidden />
+        </button>
+        <span className="text-base font-medium tabular-nums text-zinc-900" aria-live="polite">
+          {value}
+        </span>
+        <button type="button" className={btn} aria-label={`${more}: ${label}`}
+          disabled={value >= max} onClick={() => onChange(value + 1)}>
+          <Plus className="size-4" aria-hidden />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function setMetaTag(name: string, content: string) {
   let el = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)
   if (!el) {
@@ -161,6 +221,7 @@ export default function PublicBooking() {
   const params = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const { t, lang } = useT()
   const [property, setProperty] = useState<string | null>(null)
   const [catalogMode, setCatalogMode] = useState<string | null>(null)
   const [sites, setSites] = useState<
@@ -377,21 +438,31 @@ export default function PublicBooking() {
   if (!data)
     return (
       <p className="py-20 text-center text-zinc-400">
-        {error ?? "Loading…"}
+        {error ?? t("Loading…")}
       </p>
     )
 
   const p = data.property
   const minNights = p.minimum_nights || 1
   const isStr = p.property_kind === "Short Term Rental"
+  const money = (n: number) => `${cur()}${inr(n)}`
+  const nightsLabel = (n: number) => t(n === 1 ? "{n} night" : "{n} nights", { n })
+  const nights = nightsBetween(search.check_in_date, search.check_out_date)
+  const guestsLabel = [
+    t(search.adults === 1 ? "{n} adult" : "{n} adults", { n: search.adults }),
+    search.children > 0 &&
+      t(search.children === 1 ? "{n} child" : "{n} children", { n: search.children }),
+  ]
+    .filter(Boolean)
+    .join(", ")
   const bookCta =
     p.booking_mode === "Request to Book"
-      ? "Request to book"
+      ? t("Request to book")
       : p.payment_mode === "Full online"
-        ? "Confirm & pay"
+        ? t("Confirm & pay")
         : isStr
-          ? "Book this listing"
-          : "Book now"
+          ? t("Book this listing")
+          : t("Book now")
   const locations = data.locations?.length
     ? data.locations
     : [{ name: p.property_name, address: p.address_line, google_maps_url: null,
@@ -404,39 +475,110 @@ export default function PublicBooking() {
     data.room_types.find((rt) => rt.media?.[0]?.url)?.media?.[0]?.url ||
     sites.find((s) => s.cover_image)?.cover_image ||
     null
+  const checkinAt = p.checkin_time?.slice(0, 5)
+  const checkoutAt = p.checkout_time?.slice(0, 5)
+  const freeCancel = p.free_cancel_days || 0
+  const cancelAfter =
+    p.cancellation_fee === "First Night"
+      ? t("After that, the first night is charged")
+      : p.cancellation_fee === "Full Stay"
+        ? t("After that, the full stay is charged")
+        : ""
+  // the three things a guest weighs before scrolling to the rooms
+  const facts = [
+    { icon: Clock, text: t("Check-in {in} · Check-out {out}", { in: checkinAt, out: checkoutAt }) },
+    freeCancel > 0 && {
+      icon: ShieldCheck,
+      text: t(
+        freeCancel === 1
+          ? "Free cancellation until 1 day before arrival"
+          : "Free cancellation until {n} days before arrival",
+        { n: freeCancel },
+      ),
+    },
+    p.payment_mode === "Pay at hotel" && {
+      icon: Wallet,
+      text: t("Pay at the hotel, no prepayment"),
+    },
+  ].filter(Boolean) as { icon: typeof Clock; text: string }[]
+  const policyTexts = [
+    [t("House rules"), p.house_rules],
+    [t("Pets"), p.pets_policy],
+    [t("Children"), p.children_policy],
+    [t("Extra beds"), p.extra_bed_policy],
+  ].filter(([, v]) => v) as [string, string][]
+  // a one-site property shows the street with its town; villas show their own
+  const placeLine = (address: string | null) => {
+    if (locations.length > 1) return address || [p.city, p.state].filter(Boolean).join(", ")
+    return [address, p.city, p.state]
+      .filter((part, i, all) => part && !all.slice(0, i).some((prev) => prev?.includes(part)))
+      .join(", ")
+  }
+  const directionsUrl = (loc: (typeof locations)[number]) =>
+    loc.google_maps_url ||
+    "https://www.google.com/maps/search/?api=1&query=" +
+      encodeURIComponent(
+        loc.latitude && loc.longitude
+          ? `${loc.latitude},${loc.longitude}`
+          : `${p.property_name}, ${placeLine(loc.address)}`,
+      )
 
   return (
     <div
       className="min-h-screen bg-zinc-50"
       style={accentVars(data?.property.brand_accent)}
     >
-      {/* hero — photo when available, otherwise brand accent fill */}
-      <div className="relative h-72 overflow-hidden sm:h-96">
+      {/* hero: photo when available, otherwise a lit brand fill, kept shorter */}
+      <div className={"relative overflow-hidden " + (heroSrc ? "h-72 sm:h-96" : "h-60 sm:h-64")}>
         {heroSrc ? (
-          <img
-            src={heroSrc}
-            alt=""
-            className="absolute inset-0 size-full object-cover"
-          />
+          <>
+            <img
+              src={heroSrc}
+              alt=""
+              className="absolute inset-0 size-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10" />
+          </>
         ) : (
           <div
             className="absolute inset-0"
             style={{
-              background: `linear-gradient(145deg, var(--color-brand-600) 0%, var(--color-brand-900) 100%)`,
+              background:
+                "radial-gradient(circle at 85% 0%, rgb(255 255 255 / 0.18), transparent 45%), " +
+                "radial-gradient(circle at 0% 100%, rgb(0 0 0 / 0.3), transparent 55%), " +
+                "linear-gradient(145deg, var(--color-brand-600) 0%, var(--color-brand-900) 100%)",
             }}
           />
         )}
         <div
-          className={
-            "absolute inset-0 " +
-            (heroSrc
-              ? "bg-gradient-to-t from-black/75 via-black/25 to-black/10"
-              : "bg-gradient-to-t from-black/40 via-transparent to-transparent")
-          }
-        />
-        <div className="absolute inset-x-0 bottom-0 mx-auto flex max-w-5xl items-end gap-4 px-5 pb-6 text-white">
+          role="group"
+          aria-label={t("Language")}
+          className="absolute right-4 top-4 flex rounded-full bg-black/25 p-0.5 text-xs font-medium backdrop-blur"
+        >
+          {[["en", "EN"], ["id", "ID"]].map(([code, label]) => (
+            <button
+              key={code}
+              type="button"
+              aria-pressed={lang === code}
+              onClick={() => {
+                try {
+                  setLang(code)
+                } catch {
+                  /* storage blocked: the page stays in its language */
+                }
+              }}
+              className={
+                "rounded-full px-2.5 py-1 transition " +
+                (lang === code ? "bg-white text-zinc-900" : "text-white/80 hover:text-white")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="absolute inset-x-0 bottom-0 mx-auto flex max-w-5xl items-end gap-4 px-5 pb-12 text-white">
           {/* hotel logo slot - falls back to a monogram until one is set */}
-          <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/30 bg-white shadow-lg sm:size-20">
+          <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-white/40 sm:size-20">
             {p.logo_url ? (
               <img
                 src={p.logo_url}
@@ -454,62 +596,62 @@ export default function PublicBooking() {
             )}
           </div>
           <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-2 text-sm">
-            {p.star_category && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 backdrop-blur">
-                <Star className="size-3.5 fill-amber-300 text-amber-300" aria-hidden />
-                {p.star_category}
+            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              {p.star_category && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 backdrop-blur">
+                  <Star className="size-3.5 fill-amber-300 text-amber-300" aria-hidden />
+                  {tValue(p.star_category)}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1 text-white/85">
+                <MapPin className="size-3.5" aria-hidden />
+                {[p.city, p.state].filter(Boolean).join(", ")}
               </span>
-            )}
-            <span className="inline-flex items-center gap-1 text-white/80">
-              <MapPin className="size-3.5" aria-hidden />
-              {p.city}, {p.state}
-            </span>
-          </div>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            {p.property_name}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-            {p.google_reviews_url && (
-              <a
-                href={p.google_reviews_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-white/90 underline-offset-2 hover:underline"
-              >
-                Google Reviews <ExternalLink className="size-3.5" aria-hidden />
-              </a>
-            )}
-            {p.tripadvisor_url && (
-              <a
-                href={p.tripadvisor_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-white/90 underline-offset-2 hover:underline"
-              >
-                TripAdvisor <ExternalLink className="size-3.5" aria-hidden />
-              </a>
-            )}
-            {p.phone && (
-              <a
-                href={`tel:${formatPhoneTel(p.phone, p.country)}`}
-                className="inline-flex items-center gap-1 text-white/80 underline-offset-2 hover:underline"
-              >
-                <Phone className="size-3.5" aria-hidden />
-                {formatPhoneDisplay(p.phone, p.country)}
-              </a>
-            )}
-          </div>
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              {p.property_name}
+            </h1>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              {p.phone && (
+                <a
+                  href={`tel:${formatPhoneTel(p.phone, p.country)}`}
+                  className="inline-flex items-center gap-1 text-white/85 underline-offset-2 hover:underline"
+                >
+                  <Phone className="size-3.5" aria-hidden />
+                  {formatPhoneDisplay(p.phone, p.country)}
+                </a>
+              )}
+              {p.google_reviews_url && (
+                <a
+                  href={p.google_reviews_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-white/90 underline-offset-2 hover:underline"
+                >
+                  Google Reviews <ExternalLink className="size-3.5" aria-hidden />
+                </a>
+              )}
+              {p.tripadvisor_url && (
+                <a
+                  href={p.tripadvisor_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-white/90 underline-offset-2 hover:underline"
+                >
+                  TripAdvisor <ExternalLink className="size-3.5" aria-hidden />
+                </a>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="mx-auto max-w-5xl px-5 pb-16">
-        {/* search bar */}
-        <div className="relative z-10 -mt-6 mb-8 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-zinc-500">Check-in</span>
+        {/* search bar: one row from lg, guests side by side on a phone */}
+        <div className="relative z-10 -mt-8 mb-10 rounded-2xl border border-zinc-200 bg-white p-4 shadow-lg sm:p-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-[1fr_1fr_9rem_9rem_auto] lg:items-end">
+            <label className="col-span-2 block sm:col-span-1">
+              <span className="mb-1 block text-xs font-medium text-zinc-500">{t("Check-in")}</span>
               <input
                 type="date"
                 className={inputCls}
@@ -527,8 +669,11 @@ export default function PublicBooking() {
                 }}
               />
             </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-zinc-500">Check-out</span>
+            <label className="col-span-2 block sm:col-span-1">
+              <span className="mb-1 flex items-center justify-between text-xs font-medium text-zinc-500">
+                <span>{t("Check-out")}</span>
+                <span className="text-brand-700">{nightsLabel(nights)}</span>
+              </span>
               <input
                 type="date"
                 className={inputCls}
@@ -539,67 +684,68 @@ export default function PublicBooking() {
                 }
               />
             </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-zinc-500">Adults</span>
-              <input
-                type="number"
-                min={1}
-                className={inputCls}
-                value={search.adults}
-                onChange={(e) =>
-                  setSearch({ ...search, adults: Math.max(1, Number(e.target.value)) })
-                }
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-zinc-500">Children</span>
-              <input
-                type="number"
-                min={0}
-                className={inputCls}
-                value={search.children}
-                onChange={(e) =>
-                  setSearch({ ...search, children: Math.max(0, Number(e.target.value)) })
-                }
-              />
-            </label>
+            <Stepper
+              label={t("Adults")}
+              value={search.adults}
+              min={1}
+              less={t("Decrease")}
+              more={t("Increase")}
+              onChange={(adults) => setSearch({ ...search, adults })}
+            />
+            <Stepper
+              label={t("Children")}
+              value={search.children}
+              min={0}
+              less={t("Decrease")}
+              more={t("Increase")}
+              onChange={(children) => setSearch({ ...search, children })}
+            />
+            <Button
+              className="col-span-2 h-[46px] justify-center gap-2 px-6 text-base lg:col-span-1"
+              onClick={() => {
+                fetchResults()
+                document
+                  .getElementById("stay-results")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+            >
+              <Search className="size-4" aria-hidden />
+              {t("Check availability")}
+            </Button>
           </div>
-          <p className="mt-1.5 text-xs text-zinc-400">
-            {nightsBetween(search.check_in_date, search.check_out_date)} night
-            {nightsBetween(search.check_in_date, search.check_out_date) === 1 ? "" : "s"}
-            {minNights > 1 ? ` · ${minNights}-night minimum` : ""}
-          </p>
-          <Button
-            className="mt-3 w-full justify-center gap-2 py-2.5 text-base"
-            onClick={() => {
-              fetchResults()
-              document
-                .getElementById("stay-results")
-                ?.scrollIntoView({ behavior: "smooth", block: "start" })
-            }}
-          >
-            <Search className="size-4" aria-hidden />
-            Check availability
-          </Button>
+          {minNights > 1 && (
+            <p className="mt-2 text-xs text-zinc-500">
+              {t("{n}-night minimum stay", { n: minNights })}
+            </p>
+          )}
         </div>
 
-        {p.description && (
-          <p className="mb-3 max-w-3xl text-[15px] leading-relaxed text-zinc-600">
-            {p.description}
-          </p>
-        )}
-        <div className="mb-8 flex flex-wrap gap-2">
-          {p.amenities.map((a) => (
-            <Badge key={a} tone="zinc">{a}</Badge>
-          ))}
-          <Badge tone="brand">
-            Check-in {p.checkin_time.slice(0, 5)} · Check-out {p.checkout_time.slice(0, 5)}
-          </Badge>
-        </div>
+        <section className="mb-10 space-y-4">
+          {p.description && (
+            <p className="max-w-3xl text-[15px] leading-relaxed text-zinc-600">
+              {p.description}
+            </p>
+          )}
+          <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-700">
+            {facts.map((f) => (
+              <li key={f.text} className="inline-flex items-center gap-2">
+                <f.icon className="size-4 shrink-0 text-brand-600" aria-hidden />
+                {f.text}
+              </li>
+            ))}
+          </ul>
+          {p.amenities.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {p.amenities.map((a) => (
+                <Badge key={a} tone="zinc">{tValue(a)}</Badge>
+              ))}
+            </div>
+          )}
+        </section>
 
         {p.gallery && p.gallery.length > 0 && (
-          <div className="mb-8">
-            <h2 className="mb-3 text-lg font-semibold text-zinc-800">Photo Gallery</h2>
+          <div className="mb-10">
+            <h2 className="mb-3 text-lg font-semibold text-zinc-900">{t("Photos")}</h2>
             <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-thin">
               {p.gallery.map((img: any, i: number) => (
                 <div key={i} className="relative h-40 w-64 shrink-0 rounded-xl overflow-hidden shadow-sm border border-zinc-200 bg-zinc-100">
@@ -616,13 +762,13 @@ export default function PublicBooking() {
         )}
 
         {catalogMode === "sites" && sites.length > 0 ? (
-          <div id="stay-results" className="mb-10">
+          <div id="stay-results" className="mb-10 scroll-mt-4">
             <div className="mb-5">
               <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">
-                Places to stay
+                {t("Places to stay")}
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Pick a villa, then choose a room or the whole house.
+                {t("Pick a villa, then choose a room or the whole house.")}
               </p>
             </div>
             <div className="grid gap-6 sm:grid-cols-2">
@@ -635,7 +781,7 @@ export default function PublicBooking() {
                   <Link
                     key={site.slug ?? site.name}
                     to={stayPath}
-                    className="group overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md"
+                    className="group overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-brand-600/40 hover:shadow-md"
                   >
                     <div className="relative aspect-[4/3] bg-zinc-100">
                       {site.cover_image ? (
@@ -657,7 +803,7 @@ export default function PublicBooking() {
                       )}
                     </div>
                     <div className="p-5">
-                      <h3 className="text-xl font-semibold text-zinc-900 group-hover:text-brand-800">
+                      <h3 className="text-xl font-semibold text-zinc-900 group-hover:text-brand-900">
                         {site.name}
                       </h3>
                       {(site.address || site.city) && (
@@ -670,15 +816,11 @@ export default function PublicBooking() {
                         </p>
                       )}
                       <div className="mt-4 flex flex-wrap items-end justify-between gap-2 border-t border-zinc-100 pt-4">
-                        <p className="text-sm text-zinc-600">
-                          <span className="text-lg font-semibold text-zinc-900">
-                            {cur()}
-                            {inr(site.from_rate)}
-                          </span>
-                          <span className="text-zinc-500"> / night</span>
+                        <p className="text-sm text-zinc-500">
+                          {t("From {price} per night", { price: money(site.from_rate) })}
                         </p>
                         <p className="text-sm font-medium text-brand-700">
-                          {count} listing{count === 1 ? "" : "s"} →
+                          {t(count === 1 ? "1 listing" : "{n} listings", { n: count })} →
                         </p>
                       </div>
                     </div>
@@ -688,107 +830,135 @@ export default function PublicBooking() {
             </div>
           </div>
         ) : (
-          <>
+          <div id="stay-results" className="scroll-mt-4">
             {/* room cards — hotel / single-site catalog */}
-            <div id="stay-results" className="space-y-5">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+              <h2 className="text-xl font-semibold tracking-tight text-zinc-900">
+                {isStr ? t("Choose your stay") : t("Choose your room")}
+              </h2>
+              <p className="text-sm text-zinc-500">
+                {stayDate(search.check_in_date, lang)} – {stayDate(checkOut, lang)}
+                {" · "}
+                {nightsLabel(nights)} · {guestsLabel}
+              </p>
+            </div>
+            <div className="space-y-4">
               {data.room_types.map((rt) => {
                 const r = results[rt.name]
                 const soldOut = r && r.rooms_left === 0
                 return (
-                  <div
+                  <article
                     key={rt.name}
-                    className="grid overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm sm:grid-cols-5"
+                    className="grid overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition hover:shadow-md sm:grid-cols-[15rem_1fr]"
                   >
-                    <div className="relative sm:col-span-2">
+                    <div className="relative">
                       {rt.media[0] ? (
                         <img
                           src={rt.media[0].url}
                           alt={rt.media[0].caption ?? rt.room_type_name}
-                          className="h-52 w-full object-cover sm:h-full"
+                          className="h-48 w-full object-cover sm:h-full"
                           loading="lazy"
                         />
                       ) : (
-                        <div className="flex h-52 items-center justify-center bg-zinc-100 sm:h-full">
-                          <BedDouble className="size-10 text-zinc-300" aria-hidden />
+                        <div className="flex h-28 items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 sm:h-full">
+                          <BedDouble className="size-9 text-brand-600/40" aria-hidden />
                         </div>
                       )}
                       {rt.media.length > 1 && (
                         <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-0.5 text-xs text-white">
-                          {rt.media.length} photos
+                          {t("{n} photos", { n: rt.media.length })}
                         </span>
                       )}
                     </div>
-                    <div className="flex flex-col justify-between p-5 sm:col-span-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-lg font-semibold">{rt.room_type_name}</h2>
-                          {rt.bed_type && <Badge tone="zinc">{rt.bed_type} bed</Badge>}
-                          {rt.room_view && <Badge tone="sky">{rt.room_view}</Badge>}
-                          <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
-                            <Users className="size-3.5" aria-hidden />
-                            up to {rt.adults_capacity} adults
+                    <div className="flex flex-col p-5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-semibold text-zinc-900">{rt.room_type_name}</h3>
+                        {soldOut ? (
+                          <Badge tone="rose">{t("Sold out")}</Badge>
+                        ) : r?.quote && r.rooms_left <= 2 ? (
+                          <Badge tone="amber">{t("Only {n} left", { n: r.rooms_left })}</Badge>
+                        ) : null}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+                        <span className="inline-flex items-center gap-1">
+                          <Users className="size-3.5" aria-hidden />
+                          {rt.adults_capacity === 1
+                            ? t("1 adult")
+                            : t("Up to {n} adults", { n: rt.adults_capacity })}
+                        </span>
+                        {rt.bed_type && (
+                          <span className="inline-flex items-center gap-1">
+                            <BedDouble className="size-3.5" aria-hidden />
+                            {t("{bed} bed", { bed: tValue(rt.bed_type) })}
                           </span>
-                        </div>
-                        {locations.length > 1 && rt.location_name && (
-                          <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-700">
-                            <MapPin className="size-3.5" aria-hidden />
-                            {rt.location_name}
-                          </p>
                         )}
-                        {rt.description && (
-                          <p className="mt-1 text-sm text-zinc-500">{rt.description}</p>
+                        {rt.room_view && (
+                          <span className="inline-flex items-center gap-1">
+                            <Eye className="size-3.5" aria-hidden />
+                            {t("{view} view", { view: tValue(rt.room_view) })}
+                          </span>
                         )}
-                        <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                      </div>
+                      {locations.length > 1 && rt.location_name && (
+                        <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-brand-700">
+                          <MapPin className="size-3.5" aria-hidden />
+                          {rt.location_name}
+                        </p>
+                      )}
+                      {rt.description && (
+                        <p className="mt-2 text-sm leading-relaxed text-zinc-600">{rt.description}</p>
+                      )}
+                      {rt.amenities.length > 0 && (
+                        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
                           {rt.amenities.map((a) => (
                             <li
                               key={a}
-                              className="inline-flex items-center gap-1 text-xs text-zinc-500"
+                              className="inline-flex items-center gap-1 text-xs text-zinc-600"
                             >
                               <Check className="size-3 text-brand-600" aria-hidden />
-                              {a}
+                              {tValue(a)}
                             </li>
                           ))}
                         </ul>
-                      </div>
-                      <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
+                      )}
+                      <div className="flex-1" />
+                      <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t border-zinc-100 pt-4">
                         <div>
                           {r?.quote ? (
                             <>
-                              <p className="text-2xl font-semibold">
-                                {cur()}
-                                {inr(r.quote.amount_after_tax)}
-                                <span className="ml-1 text-sm font-normal text-zinc-500">
-                                  total · {r.quote.nights} night
-                                  {r.quote.nights === 1 ? "" : "s"}, taxes in
-                                </span>
+                              <p className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-900">
+                                {money(r.quote.amount_after_tax)}
+                              </p>
+                              <p className="text-xs text-zinc-500">
+                                {t(
+                                  r.quote.nights === 1
+                                    ? "for 1 night, taxes included"
+                                    : "for {n} nights, taxes included",
+                                  { n: r.quote.nights },
+                                )}
                               </p>
                               {(r.quote.cleaning_fee || 0) > 0 && (
                                 <p className="text-xs text-zinc-500">
-                                  Includes {cur()}
-                                  {inr(r.quote.cleaning_fee || 0)} cleaning fee
+                                  {t("Includes {amount} cleaning fee", {
+                                    amount: money(r.quote.cleaning_fee || 0),
+                                  })}
                                 </p>
                               )}
                               {(r.quote.totals?.deposit_required || 0) > 0 && (
                                 <p className="text-xs text-zinc-500">
-                                  Refundable deposit {cur()}
-                                  {inr(r.quote.totals?.deposit_required || 0)} due
-                                  separately
-                                </p>
-                              )}
-                              {r.rooms_left <= 2 && (
-                                <p className="text-xs font-medium text-rose-600">
-                                  Only {r.rooms_left} left for these dates
+                                  {t("Refundable deposit {amount}, paid separately", {
+                                    amount: money(r.quote.totals?.deposit_required || 0),
+                                  })}
                                 </p>
                               )}
                             </>
                           ) : soldOut ? (
-                            <p className="text-sm font-medium text-rose-600">
-                              Sold out for these dates
+                            <p className="text-sm text-zinc-500">
+                              {t("Not available for these dates")}
                             </p>
                           ) : (
-                            <p className="text-sm text-zinc-400">
-                              from {cur()}
-                              {inr(rt.base_price)}/night
+                            <p className="text-sm text-zinc-500">
+                              {t("From {price} per night", { price: money(rt.base_price) })}
                             </p>
                           )}
                         </div>
@@ -799,7 +969,7 @@ export default function PublicBooking() {
                               className="px-4 py-2.5"
                               onClick={() => navigate(`/stay/${rt.listing_slug}`)}
                             >
-                              View listing
+                              {t("View details")}
                             </Button>
                           )}
                           <Button
@@ -812,97 +982,86 @@ export default function PublicBooking() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </article>
                 )
               })}
             </div>
-          </>
+          </div>
         )}
 
         {catalogMode !== "sites" && (
         <>
-        <div className="mt-12 grid gap-8 md:grid-cols-2 border-t border-zinc-200 pt-8">
+        <div className="mt-14 grid gap-8 border-t border-zinc-200 pt-10 md:grid-cols-2">
           {/* Policies & Rules */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold text-zinc-800">
-              {p.property_kind === "Short Term Rental" ? "Stay policies" : "Hotel Policies & Rules"}
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-zinc-900">
+              {isStr ? t("Stay policies") : t("Hotel policies")}
             </h2>
-            <div className="rounded-xl border border-zinc-200 bg-white p-5 space-y-4 shadow-sm text-sm">
-              <div className="flex justify-between border-b border-zinc-100 pb-2">
-                <span className="font-medium text-zinc-500">Check-in</span>
-                <span className="font-semibold text-zinc-800">{p.checkin_time?.slice(0, 5)} onwards</span>
-              </div>
-              <div className="flex justify-between border-b border-zinc-100 pb-2">
-                <span className="font-medium text-zinc-500">Check-out</span>
-                <span className="font-semibold text-zinc-800">by {p.checkout_time?.slice(0, 5)}</span>
-              </div>
-              {(p.minimum_nights || 1) > 1 && (
-                <div className="flex justify-between border-b border-zinc-100 pb-2">
-                  <span className="font-medium text-zinc-500">Minimum stay</span>
-                  <span className="font-semibold text-zinc-800">{p.minimum_nights} nights</span>
-                </div>
-              )}
-              {(p.cleaning_fee || 0) > 0 && (
-                <div className="flex justify-between border-b border-zinc-100 pb-2">
-                  <span className="font-medium text-zinc-500">Cleaning fee</span>
-                  <span className="font-semibold text-zinc-800">{cur()}{inr(p.cleaning_fee)} (one-time)</span>
-                </div>
-              )}
-              {(p.security_deposit_amount || 0) > 0 && (
-                <div className="flex justify-between border-b border-zinc-100 pb-2">
-                  <span className="font-medium text-zinc-500">Security deposit</span>
-                  <span className="font-semibold text-zinc-800">{cur()}{inr(p.security_deposit_amount)} (refundable)</span>
-                </div>
-              )}
-              <div className="flex justify-between border-b border-zinc-100 pb-2">
-                <span className="font-medium text-zinc-500">Cancellation</span>
-                <span className="font-semibold text-zinc-800 text-right max-w-[60%]">
-                  {(p.free_cancel_days || 0) > 0
-                    ? `Free up to ${p.free_cancel_days} day${p.free_cancel_days === 1 ? "" : "s"} before arrival`
-                    : "Per property policy"}
-                  {p.cancellation_fee && p.cancellation_fee !== "None"
-                    ? ` · fee: ${p.cancellation_fee}`
-                    : ""}
-                </span>
-              </div>
-              {p.house_rules && (
-                <div>
-                  <span className="block font-semibold text-zinc-700 mb-1">House Rules</span>
-                  <p className="text-zinc-600 text-xs leading-relaxed whitespace-pre-line">{p.house_rules}</p>
-                </div>
-              )}
-              {p.pets_policy && (
-                <div>
-                  <span className="block font-semibold text-zinc-700 mb-1">Pets Policy</span>
-                  <p className="text-zinc-600 text-xs leading-relaxed whitespace-pre-line">{p.pets_policy}</p>
-                </div>
-              )}
-              {p.children_policy && (
-                <div>
-                  <span className="block font-semibold text-zinc-700 mb-1">Children & Extra Beds</span>
-                  <p className="text-zinc-600 text-xs leading-relaxed whitespace-pre-line">{p.children_policy}</p>
-                </div>
-              )}
-              {p.extra_bed_policy && (
-                <div>
-                  <span className="block font-semibold text-zinc-700 mb-1">Extra Bed Policy</span>
-                  <p className="text-zinc-600 text-xs leading-relaxed whitespace-pre-line">{p.extra_bed_policy}</p>
+            <div className="rounded-xl border border-zinc-200 bg-white p-5 text-sm shadow-sm">
+              <dl className="divide-y divide-zinc-100">
+                {(
+                  [
+                    [t("Check-in"), t("From {time}", { time: checkinAt })],
+                    [t("Check-out"), t("Until {time}", { time: checkoutAt })],
+                    minNights > 1 && [t("Minimum stay"), nightsLabel(minNights)],
+                    (p.cleaning_fee || 0) > 0 && [
+                      t("Cleaning fee"),
+                      t("{amount}, one-time", { amount: money(p.cleaning_fee) }),
+                    ],
+                    (p.security_deposit_amount || 0) > 0 && [
+                      t("Security deposit"),
+                      t("{amount}, refundable", { amount: money(p.security_deposit_amount) }),
+                    ],
+                    [
+                      t("Cancellation"),
+                      freeCancel > 0
+                        ? t(
+                            freeCancel === 1
+                              ? "Free until 1 day before arrival"
+                              : "Free until {n} days before arrival",
+                            { n: freeCancel },
+                          )
+                        : t("Per property policy"),
+                      cancelAfter,
+                    ],
+                  ].filter(Boolean) as [string, string, string?][]
+                ).map(([label, value, sub]) => (
+                  <div key={label} className="flex justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
+                    <dt className="text-zinc-500">{label}</dt>
+                    <dd className="text-right font-medium text-zinc-900">
+                      {value}
+                      {sub && (
+                        <span className="block text-xs font-normal text-zinc-500">{sub}</span>
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {policyTexts.length > 0 && (
+                <div className="mt-4 space-y-3 border-t border-zinc-100 pt-4">
+                  {policyTexts.map(([label, text]) => (
+                    <div key={label}>
+                      <p className="mb-1 font-medium text-zinc-800">{label}</p>
+                      <p className="whitespace-pre-line text-xs leading-relaxed text-zinc-600">{text}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
           {/* Map & Directions - one card per villa/site when the property
-              spans multiple addresses, one card when it doesn't. */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold text-zinc-800">
-              {locations.length > 1 ? "Our Locations" : "Location & Directions"}
+              spans multiple addresses, one card when it doesn't. A site
+              without coordinates gets no map, only the directions link. */}
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-zinc-900">
+              {locations.length > 1 ? t("Our locations") : t("Location")}
             </h2>
             <div className="space-y-4">
               {locations.map((loc, i) => (
-                <div key={loc.name + i} className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm space-y-3">
+                <div key={loc.name + i} className="space-y-3 rounded-xl border border-zinc-200 bg-white p-5 text-sm shadow-sm">
                   {locations.length > 1 && (
-                    <p className="text-sm font-semibold text-zinc-800">{loc.name}</p>
+                    <p className="font-semibold text-zinc-900">{loc.name}</p>
                   )}
                   {loc.latitude && loc.longitude ? (
                     <iframe
@@ -910,46 +1069,57 @@ export default function PublicBooking() {
                       width="100%"
                       height="220"
                       src={`https://maps.google.com/maps?q=${loc.latitude},${loc.longitude}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
-                      className="rounded-lg border border-zinc-200 shadow-inner"
+                      className="rounded-lg border border-zinc-200"
                     />
-                  ) : (
-                    <div className="flex h-40 items-center justify-center bg-zinc-50 rounded-lg border border-zinc-200">
-                      <span className="text-sm text-zinc-400">Map location not set</span>
-                    </div>
-                  )}
-                  <p className="text-sm font-medium text-zinc-800 flex items-start gap-2">
-                    <MapPin className="size-4 shrink-0 text-brand-600 mt-0.5" />
-                    {loc.address || `${p.city}, ${p.state}`}
+                  ) : null}
+                  <p className="flex items-start gap-2 font-medium text-zinc-800">
+                    <MapPin className="mt-0.5 size-4 shrink-0 text-brand-600" aria-hidden />
+                    {placeLine(loc.address)}
                   </p>
-                  {loc.google_maps_url && (
-                    <a href={loc.google_maps_url} target="_blank" rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">
-                      Open in Google Maps <ExternalLink className="size-3" />
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={directionsUrl(loc)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+                    >
+                      <Navigation className="size-3.5 text-brand-600" aria-hidden />
+                      {t("Get directions")}
                     </a>
-                  )}
+                    {locations.length <= 1 && p.phone && (
+                      <a
+                        href={`tel:${formatPhoneTel(p.phone, p.country)}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+                      >
+                        <Phone className="size-3.5 text-brand-600" aria-hidden />
+                        {t("Call the hotel")}
+                      </a>
+                    )}
+                  </div>
                   {locations.length > 1 && loc.room_types.length > 0 && (
-                    <p className="text-xs text-zinc-500 border-t border-zinc-100 pt-3">
-                      Rooms here:{" "}
-                      {loc.room_types
-                        .map((rt) => data.room_types.find((r) => r.name === rt)?.room_type_name || rt)
-                        .join(", ")}
+                    <p className="border-t border-zinc-100 pt-3 text-xs text-zinc-500">
+                      {t("Rooms here: {list}", {
+                        list: loc.room_types
+                          .map((rt) => data.room_types.find((r) => r.name === rt)?.room_type_name || rt)
+                          .join(", "),
+                      })}
                     </p>
                   )}
                   {locations.length <= 1 && p.driving_directions && (
-                    <div className="text-xs text-zinc-600 border-t border-zinc-100 pt-3">
-                      <span className="block font-semibold text-zinc-700 mb-1">Driving Directions</span>
-                      <p className="leading-relaxed whitespace-pre-line">{p.driving_directions}</p>
+                    <div className="border-t border-zinc-100 pt-3 text-xs text-zinc-600">
+                      <p className="mb-1 font-medium text-zinc-800">{t("Driving directions")}</p>
+                      <p className="whitespace-pre-line leading-relaxed">{p.driving_directions}</p>
                     </div>
                   )}
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         </div>
 
         {p.faqs && p.faqs.length > 0 && (
-          <div className="mt-12 border-t border-zinc-200 pt-8 max-w-3xl mx-auto space-y-4">
-            <h2 className="text-xl font-bold text-zinc-800 text-center mb-6">Frequently Asked Questions</h2>
+          <div className="mx-auto mt-14 max-w-3xl space-y-4 border-t border-zinc-200 pt-10">
+            <h2 className="mb-6 text-center text-lg font-semibold text-zinc-900">{t("Frequently asked questions")}</h2>
             <div className="space-y-3">
               {p.faqs.map((faq: any, i: number) => (
                 <details key={i} className="group rounded-xl border border-zinc-200 bg-white p-4 shadow-sm [&_summary::-webkit-details-marker]:hidden cursor-pointer">
@@ -970,19 +1140,29 @@ export default function PublicBooking() {
         </>
         )}
 
-        <p className="mt-10 text-center text-xs text-zinc-400">
-          Powered by BizConnect.id Hotel
+        <p className="mt-12 text-center text-xs text-zinc-400">
+          {t("Powered by BizConnect.id Hotel")}
         </p>
       </div>
 
       {booking && (
         <Sheet
           wide
-          title={done?.verify ? "Confirm your booking" : done?.status === "Pending Payment" ? "Booking held" : done ? "Booking confirmed" : "Complete your booking"}
+          title={
+            done?.verify
+              ? t("Confirm your booking")
+              : done?.status === "Pending Payment"
+                ? t("Booking held")
+                : done
+                  ? t("Booking confirmed")
+                  : t("Complete your booking")
+          }
           description={
             done
               ? undefined
-              : `${data.room_types.find((r) => r.name === booking)?.room_type_name} · ${search.check_in_date} → ${checkOut}`
+              : `${data.room_types.find((r) => r.name === booking)?.room_type_name} · ` +
+                `${stayDate(search.check_in_date, lang, true)} → ${stayDate(checkOut, lang, true)} · ` +
+                `${nightsLabel(nights)}, ${guestsLabel}`
           }
           onClose={() => {
             setBooking(null)
@@ -991,7 +1171,7 @@ export default function PublicBooking() {
           footer={
             done?.verify ? undefined : done ? (
               <Button className="w-full justify-center py-2.5" onClick={() => { setBooking(null); setDone(null) }}>
-                Done
+                {t("Done")}
               </Button>
             ) : (
               <div className="w-full space-y-2">
@@ -1002,7 +1182,7 @@ export default function PublicBooking() {
                   disabled={busy || !form.guest_name || !form.phone || !form.email}
                   onClick={submitBooking}
                 >
-                  {busy ? "Booking…" : bookCta}
+                  {busy ? t("Booking…") : bookCta}
                 </Button>
               </div>
             )
@@ -1019,10 +1199,14 @@ export default function PublicBooking() {
             />
           ) : done?.status === "Pending Payment" ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900">
-              <p className="text-lg font-semibold">{done.reservation} is held for you</p>
+              <p className="text-lg font-semibold">
+                {t("{reservation} is held for you", { reservation: done.reservation })}
+              </p>
               <p className="mt-1 text-sm">
-                Total {cur()}{inr(done.amount)}. The hotel will send you a payment link for the
-                {" "}{cur()}{inr(done.advance ?? 0)} advance that confirms this booking.
+                {t(
+                  "Total {total}. The hotel will send you a payment link for the {advance} advance that confirms this booking.",
+                  { total: money(done.amount), advance: money(done.advance ?? 0) },
+                )}
               </p>
             </div>
           ) : done ? (
@@ -1030,36 +1214,41 @@ export default function PublicBooking() {
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-emerald-800">
                 <p className="text-lg font-semibold">{done.reservation}</p>
                 <p className="mt-1 text-sm">
-                  Total {cur()}{inr(done.amount)} - payable at the hotel. We've saved
-                  your number; the front desk will reach out before arrival.
+                  {t(
+                    "Total {total}, payable at the hotel. We've saved your number; the front desk will reach out before arrival.",
+                    { total: money(done.amount) },
+                  )}
                 </p>
               </div>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-zinc-600">Full name</span>
-                <input className={inputCls} value={form.guest_name} autoFocus
+                <span className="mb-1.5 block text-sm font-medium text-zinc-600">{t("Full name")}</span>
+                <input className={inputCls} value={form.guest_name} autoFocus autoComplete="name"
                   onChange={(e) => setForm({ ...form, guest_name: e.target.value })} />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-zinc-600">Phone</span>
-                <input className={inputCls} value={form.phone} placeholder="+62 …"
+                <span className="mb-1.5 block text-sm font-medium text-zinc-600">{t("Phone")}</span>
+                <input className={inputCls} type="tel" value={form.phone} placeholder="+62 …" autoComplete="tel"
                   onChange={(e) => setForm({ ...form, phone: e.target.value })} />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-zinc-600">Email</span>
-                <input className={inputCls} type="email" value={form.email}
+                <span className="mb-1.5 block text-sm font-medium text-zinc-600">{t("Email")}</span>
+                <input className={inputCls} type="email" value={form.email} autoComplete="email"
                   onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-zinc-600">Meal plan</span>
+                <span className="mb-1.5 block text-sm font-medium text-zinc-600">{t("Meal plan")}</span>
                 <select className={inputCls} value={form.meal_plan}
                   onChange={(e) => setForm({ ...form, meal_plan: e.target.value })}>
-                  <option value="">Room only</option>
+                  <option value="">{t("Room only")}</option>
                   {data.meal_plans.map((mp) => (
                     <option key={mp.name} value={mp.name}>
-                      {mp.label} (+{cur()}{inr(mp.price_per_adult)}/adult/night)
+                      {t("{label} (+{price} per adult per night)", {
+                        label: mp.label,
+                        price: money(mp.price_per_adult),
+                      })}
                     </option>
                   ))}
                 </select>
@@ -1067,7 +1256,7 @@ export default function PublicBooking() {
               {data.experiences.length > 0 && (
                 <div className="block sm:col-span-2">
                   <span className="mb-1.5 block text-sm font-medium text-zinc-600">
-                    Add experiences
+                    {t("Add experiences")}
                   </span>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {data.experiences.map((exp) => {
@@ -1078,7 +1267,7 @@ export default function PublicBooking() {
                           key={exp.name}
                           className={
                             "flex items-center gap-3 rounded-xl border p-2.5 " +
-                            (on ? "border-brand-400 bg-brand-50/50" : "border-zinc-200")
+                            (on ? "border-brand-600/50 bg-brand-50/50" : "border-zinc-200")
                           }
                         >
                           {exp.image_url && (
@@ -1100,7 +1289,7 @@ export default function PublicBooking() {
                               )}
                             </div>
                             <div className="truncate text-xs text-zinc-500">
-                              {cur()}{inr(exp.price)}
+                              {money(exp.price)}
                               {exp.duration ? ` · ${exp.duration}` : ""}
                               {exp.description ? ` · ${exp.description}` : ""}
                             </div>
@@ -1109,6 +1298,7 @@ export default function PublicBooking() {
                             <div className="flex shrink-0 items-center gap-1.5">
                               <button
                                 type="button"
+                                aria-label={`${t("Decrease")}: ${exp.experience_name}`}
                                 className="size-7 rounded-lg border border-zinc-300 text-zinc-600 hover:bg-white"
                                 onClick={() =>
                                   setAddons((a) => ({ ...a, [exp.name]: qty - 1 }))
@@ -1121,6 +1311,7 @@ export default function PublicBooking() {
                               </span>
                               <button
                                 type="button"
+                                aria-label={`${t("Increase")}: ${exp.experience_name}`}
                                 className="size-7 rounded-lg border border-zinc-300 text-zinc-600 hover:bg-white"
                                 onClick={() =>
                                   setAddons((a) => ({ ...a, [exp.name]: qty + 1 }))
@@ -1132,12 +1323,12 @@ export default function PublicBooking() {
                           ) : (
                             <button
                               type="button"
-                              className="shrink-0 rounded-lg border border-brand-500 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
+                              className="shrink-0 rounded-lg border border-brand-600 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
                               onClick={() =>
                                 setAddons((a) => ({ ...a, [exp.name]: 1 }))
                               }
                             >
-                              Add
+                              {t("Add")}
                             </button>
                           )}
                         </div>
@@ -1151,31 +1342,32 @@ export default function PublicBooking() {
                     )
                     return addonTotal > 0 ? (
                       <p className="mt-2 text-right text-xs text-zinc-500">
-                        Experiences: +{cur()}{inr(addonTotal)} · added to your bill at
-                        the hotel
+                        {t("Experiences: +{amount} · added to your bill at the hotel", {
+                          amount: money(addonTotal),
+                        })}
                       </p>
                     ) : null
                   })()}
                 </div>
               )}
               <label className="block sm:col-span-2">
-                <span className="mb-1.5 block text-sm font-medium text-zinc-600">Special requests</span>
+                <span className="mb-1.5 block text-sm font-medium text-zinc-600">{t("Special requests")}</span>
                 <textarea className={inputCls} rows={2} value={form.special_requests}
                   onChange={(e) => setForm({ ...form, special_requests: e.target.value })} />
               </label>
               <div className="block sm:col-span-2">
                 <span className="mb-1.5 block text-sm font-medium text-zinc-600">
-                  Promo code
+                  {t("Promo code")}
                 </span>
                 <div className="flex gap-2">
-                  <input className={inputCls} placeholder="Have a code?"
+                  <input className={inputCls} placeholder={t("Have a code?")}
                     value={voucher}
                     onChange={(e) => {
                       setVoucher(e.target.value)
                       setVoucherMsg(null)
                     }} />
                   <button type="button"
-                    className="shrink-0 rounded-lg border border-brand-500 px-4 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                    className="shrink-0 rounded-lg border border-brand-600 px-4 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
                     disabled={!voucher.trim() || !property}
                     onClick={async () => {
                       if (!property) return
@@ -1193,10 +1385,10 @@ export default function PublicBooking() {
                         )
                         setVoucherMsg({ ok: r.ok, text: r.message })
                       } catch {
-                        setVoucherMsg({ ok: false, text: "Couldn't check that code." })
+                        setVoucherMsg({ ok: false, text: t("Couldn't check that code.") })
                       }
                     }}>
-                    Apply
+                    {t("Apply")}
                   </button>
                 </div>
                 {voucherMsg && (
@@ -1212,20 +1404,28 @@ export default function PublicBooking() {
                 data.property.payment_mode !== "Pay at hotel" && (
                   <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-600 sm:col-span-2">
                     {data.property.payment_mode === "Full online"
-                      ? "Full amount is paid online to confirm this booking."
+                      ? t("Full amount is paid online to confirm this booking.")
                       : data.property.payment_mode === "Advance percent"
-                        ? `A ${data.property.advance_percent}% advance is collected to confirm; the rest is paid at the hotel.`
-                        : `A ${cur()}${inr(data.property.registration_fee)} registration fee is collected to confirm; the rest is paid at the hotel.`}
+                        ? t("A {pct}% advance is collected to confirm; the rest is paid at the hotel.", {
+                            pct: data.property.advance_percent,
+                          })
+                        : t("A {amount} registration fee is collected to confirm; the rest is paid at the hotel.", {
+                            amount: money(data.property.registration_fee),
+                          })}
                   </div>
                 )}
               {(data.property.cleaning_fee || 0) > 0 && (
                 <p className="text-xs text-zinc-500 sm:col-span-2">
-                  Cleaning fee {cur()}{inr(data.property.cleaning_fee)} is included in the total.
+                  {t("Cleaning fee {amount} is included in the total.", {
+                    amount: money(data.property.cleaning_fee),
+                  })}
                 </p>
               )}
               {(data.property.security_deposit_amount || 0) > 0 && (
                 <p className="text-xs text-zinc-500 sm:col-span-2">
-                  A refundable security deposit of {cur()}{inr(data.property.security_deposit_amount)} may be collected separately.
+                  {t("A refundable security deposit of {amount} may be collected separately.", {
+                    amount: money(data.property.security_deposit_amount),
+                  })}
                 </p>
               )}
               {error && (
