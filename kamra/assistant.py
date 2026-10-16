@@ -892,14 +892,17 @@ def _propose(name: str, clean: dict, property: str) -> dict:
 	"""Park a change for the person to approve. Only an id reaches the
 	browser; the arguments stay on the server, so what runs is what the
 	model proposed and the card showed. The same change proposed again
-	while the first waits gets the first one's id, so it can run once."""
+	while the first waits, or while it is being approved, gets the first
+	one's id, so it can run once."""
 	_assert_same_property(clean, property)
 	user = frappe.session.user
 	sig = hashlib.sha256(
 		f"{user}|{name}|{frappe.as_json(clean)}".encode()).hexdigest()
 	index = f"kamra_ai_proposal_ix:{sig}"
 	action = _live(index)
-	if not (action and _live(_proposal_key(action))):
+	repeat = bool(action and (_live(_proposal_key(action))
+	                          or frappe.cache.exists(_claim_key(action))))
+	if not repeat:
 		action = secrets.token_urlsafe(16)
 		frappe.cache.set_value(_proposal_key(action), {
 			"user": user, "property": property, "tool": name, "args": clean,
@@ -909,11 +912,14 @@ def _propose(name: str, clean: dict, property: str) -> dict:
 	           if k not in clean}
 	return {"tool": name, "ok": True, "pending": True, "id": action,
 	        "property": property, "args": _shown(clean, property),
-	        "context": context}
+	        "context": context, "repeat": repeat}
 
 
 PROPOSED = ("Not done. This is a proposal waiting for the staff member to "
             "press Approve on screen. Tell them in one line what you proposed.")
+REPEATED = ("Not done, and not a new proposal: the same change is already "
+            "waiting on one card and runs once. If it is really meant twice, "
+            "propose the second after the first is approved.")
 
 
 def _answer_calls(calls, property: str, s, convo: list, actions: list):
@@ -931,8 +937,10 @@ def _answer_calls(calls, property: str, s, convo: list, actions: list):
 			clean = _clean_args(name, args if isinstance(args, dict) else {},
 			                    property)
 			if TOOLS[name][4]:
-				actions.append(_propose(name, clean, property))
-				result = {"status": "awaiting_approval", "message": PROPOSED}
+				proposal = _propose(name, clean, property)
+				actions.append(proposal)
+				result = {"status": "awaiting_approval",
+				          "message": REPEATED if proposal["repeat"] else PROPOSED}
 			else:
 				result = _execute(name, clean, property)
 				actions.append({"tool": name, "ok": True})

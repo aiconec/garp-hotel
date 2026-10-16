@@ -102,6 +102,10 @@ export default function Assistant() {
   const endRef = useRef<HTMLDivElement>(null)
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null)
   const [aiAllowed, setAiAllowed] = useState(true)
+  // the messages as last rendered, for saves that outlive a render (or the
+  // screen: a turn still saves if the person navigates away mid-answer)
+  const latest = useRef<ChatMsg[]>([])
+  latest.current = msgs
 
   useEffect(() => {
     call<{ enabled: boolean; allowed?: boolean }>("kamra.assistant.assistant_status", {
@@ -226,12 +230,8 @@ export default function Assistant() {
       }
       // persist the completed turn from the latest state, not `history`:
       // an approval that finished while the agent answered keeps its outcome
-      const finalMsgs = await new Promise<ChatMsg[]>((done) =>
-        setMsgs((ms) => {
-          const next = ms.map((m, i) => (i === aIdx ? { ...m, content, actions } : m))
-          done(next)
-          return next
-        }),
+      const finalMsgs = latest.current.map((m, i) =>
+        i === aIdx ? { ...m, content, actions } : m,
       )
       await saveConversation(
         convId,
@@ -247,18 +247,19 @@ export default function Assistant() {
     }
   }
 
-  /** Record what became of a proposal and keep it with the conversation. */
-  function resolveAction(mi: number, ai: number, patch: Partial<AgentAction>) {
+  /** Record what became of a proposal and keep it with the conversation.
+   * Every card with its id settles: a repeated proposal shares the id. */
+  function resolveAction(id: string, patch: Partial<AgentAction>) {
     setMsgs((ms) => {
-      const next = ms.map((m, i) =>
-        i !== mi
-          ? m
-          : {
+      const next = ms.map((m) =>
+        m.actions?.some((a) => a.pending && a.id === id)
+          ? {
               ...m,
-              actions: (m.actions ?? []).map((a, j) =>
-                j === ai ? { ...a, ...patch } : a,
+              actions: m.actions.map((a) =>
+                a.pending && a.id === id ? { ...a, ...patch } : a,
               ),
-            },
+            }
+          : m,
       )
       if (activeId) void saveConversation(activeId, next).catch(() => {})
       return next
@@ -401,12 +402,14 @@ export default function Assistant() {
                       busy && <ThinkingDots />
                     )}
                     {m.actions?.map((a, j) =>
-                      a.pending ? (
+                      // the same change proposed twice is one card
+                      a.pending &&
+                      m.actions!.findIndex((b) => b.pending && b.id === a.id) === j ? (
                         <ActionProposal
                           key={a.id ?? j}
                           action={a}
                           disabled={busy}
-                          onResolved={(patch) => resolveAction(i, j, patch)}
+                          onResolved={(patch) => a.id && resolveAction(a.id, patch)}
                         />
                       ) : null,
                     )}
