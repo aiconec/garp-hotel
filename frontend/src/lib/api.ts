@@ -1473,11 +1473,32 @@ export const banquet = {
 }
 
 // --- Assistant conversations (full-page module) ---
+/** A tool the agent ran, or (pending) a change it proposed. A proposal only
+ * runs when the person approves it; `status` records what became of it. */
+export interface AgentAction {
+  tool: string
+  ok: boolean
+  error?: string
+  pending?: boolean
+  id?: string
+  args?: Record<string, unknown>
+  context?: Record<string, unknown>
+  status?: "approved" | "declined" | "failed" | "expired"
+  note?: string
+  /** the property the proposal acts on (its PIN rule applies) */
+  property?: string
+}
 export interface ChatMsg {
   role: "user" | "assistant"
   content: string
-  actions?: { tool: string; ok: boolean }[]
+  actions?: AgentAction[]
 }
+export const approveAction = (action: string) =>
+  call<{ ok: boolean; note: string }>("kamra.assistant.approve_action", {
+    action,
+  })
+export const declineAction = (action: string) =>
+  call<{ ok: boolean }>("kamra.assistant.decline_action", { action })
 export interface ConversationSummary {
   name: string
   title: string

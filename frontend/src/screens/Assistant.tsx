@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Loader2, Plus, Send, Sparkles, Trash2, Wrench } from "lucide-react"
 
+import { ActionProposal, outcomeNotes } from "../components/ActionProposal"
 import {
   call,
   createConversation,
@@ -9,30 +10,36 @@ import {
   getCurrentProperty,
   listConversations,
   saveConversation,
+  type AgentAction,
   type ChatMsg,
   type ConversationSummary,
 } from "../lib/api"
 import { cn } from "../lib/utils"
 import { Markdown } from "../lib/markdown"
 
+// Lookups the agent ran. Changes never show here: they are proposals,
+// shown as cards with Approve / Decline (ActionProposal).
 const TOOL_LABEL: Record<string, string> = {
   availability: "Checked availability",
   quote: "Priced the stay",
-  create_booking: "Created a booking",
-  check_in: "Checked in",
-  check_out: "Checked out",
-  post_charge: "Posted a charge",
-  take_payment: "Recorded a payment",
   find_reservations: "Looked up reservations",
   stay_detail: "Opened a stay",
-  cancel_reservation: "Cancelled a booking",
+  get_folio: "Opened the folio",
+  cancellation_preview: "Previewed cancellation",
   owner_briefing: "Read the day's numbers",
   front_desk_today: "Checked today's desk",
   waitlist_ready: "Checked waitlist openings",
-  promote_waitlist: "Promoted from waitlist",
+  guest_search: "Searched guests",
 }
 const toolLabel = (t: string) =>
   TOOL_LABEL[t] ?? t.replace(/_/g, " ")
+
+/** What the model sees of a message: its text plus what became of the
+ * changes it proposed. */
+const forModel = ({ role, content, actions }: ChatMsg) => ({
+  role,
+  content: [content, ...outcomeNotes(actions)].filter(Boolean).join("\n\n"),
+})
 
 const SUGGESTIONS = [
   "What does today look like - arrivals, departures, occupancy?",
@@ -95,6 +102,10 @@ export default function Assistant() {
   const endRef = useRef<HTMLDivElement>(null)
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null)
   const [aiAllowed, setAiAllowed] = useState(true)
+  // the messages as last rendered, for saves that outlive a render (or the
+  // screen: a turn still saves if the person navigates away mid-answer)
+  const latest = useRef<ChatMsg[]>([])
+  latest.current = msgs
 
   useEffect(() => {
     call<{ enabled: boolean; allowed?: boolean }>("kamra.assistant.assistant_status", {
@@ -160,7 +171,7 @@ export default function Assistant() {
       setMsgs((ms) => ms.map((m, i) => (i === aIdx ? fn(m) : m)))
 
     let content = ""
-    const actions: { tool: string; ok: boolean }[] = []
+    const actions: AgentAction[] = []
     try {
       let convId = activeId
       if (!convId) {
@@ -183,7 +194,7 @@ export default function Assistant() {
         credentials: "include",
         body: JSON.stringify({
           property: getCurrentProperty(),
-          messages: history.map(({ role, content }) => ({ role, content })),
+          messages: history.map(forModel),
         }),
       })
       if (!res.ok || !res.body) throw new Error(`stream ${res.status}`)
@@ -210,18 +221,18 @@ export default function Assistant() {
             content += d.text
             patch((m) => ({ ...m, content }))
           } else if (event === "action") {
-            actions.push({ tool: d.tool, ok: d.ok })
+            actions.push(d as AgentAction)
             patch((m) => ({ ...m, actions: [...actions] }))
           } else if (event === "error") {
             setError(d.message)
           }
         }
       }
-      // persist the completed turn
-      const finalMsgs: ChatMsg[] = [
-        ...history,
-        { role: "assistant", content, actions },
-      ]
+      // persist the completed turn from the latest state, not `history`:
+      // an approval that finished while the agent answered keeps its outcome
+      const finalMsgs = latest.current.map((m, i) =>
+        i === aIdx ? { ...m, content, actions } : m,
+      )
       await saveConversation(
         convId,
         finalMsgs,
@@ -234,6 +245,25 @@ export default function Assistant() {
     } finally {
       setBusy(false)
     }
+  }
+
+  /** Record what became of a proposal and keep it with the conversation.
+   * Every card with its id settles: a repeated proposal shares the id. */
+  function resolveAction(id: string, patch: Partial<AgentAction>) {
+    setMsgs((ms) => {
+      const next = ms.map((m) =>
+        m.actions?.some((a) => a.pending && a.id === id)
+          ? {
+              ...m,
+              actions: m.actions.map((a) =>
+                a.pending && a.id === id ? { ...a, ...patch } : a,
+              ),
+            }
+          : m,
+      )
+      if (activeId) void saveConversation(activeId, next).catch(() => {})
+      return next
+    })
   }
 
   return (
@@ -309,7 +339,8 @@ export default function Assistant() {
               <p className="text-sm text-zinc-500">
                 It can look things up and act - quote and book stays, check
                 guests in and out, post charges and payments, work the waitlist,
-                and read the day's numbers.
+                and read the day's numbers. Every change waits for your
+                approval.
               </p>
               <div className="grid gap-2 pt-2 sm:grid-cols-2">
                 {SUGGESTIONS.map((s) => (
@@ -347,9 +378,9 @@ export default function Assistant() {
               >
                 {m.role === "assistant" ? (
                   <>
-                    {m.actions && m.actions.length > 0 && (
+                    {m.actions?.some((a) => !a.pending) && (
                       <div className="flex flex-wrap gap-1.5">
-                        {m.actions.map((a, j) => (
+                        {m.actions.map((a, j) => !a.pending && (
                           <span
                             key={j}
                             className={cn(
@@ -369,6 +400,18 @@ export default function Assistant() {
                       <Markdown text={m.content} />
                     ) : (
                       busy && <ThinkingDots />
+                    )}
+                    {m.actions?.map((a, j) =>
+                      // the same change proposed twice is one card
+                      a.pending &&
+                      m.actions!.findIndex((b) => b.pending && b.id === a.id) === j ? (
+                        <ActionProposal
+                          key={a.id ?? j}
+                          action={a}
+                          disabled={busy}
+                          onResolved={(patch) => a.id && resolveAction(a.id, patch)}
+                        />
+                      ) : null,
                     )}
                   </>
                 ) : (
