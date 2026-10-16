@@ -140,7 +140,7 @@ export function CashierAuthProvider({ children }: { children: ReactNode }) {
         subtitle={
           padMode === "enroll"
             ? "4–8 digits. Required for money actions at this property."
-            : "Unlocks your till for 15 minutes."
+            : "Unlocks money actions for 15 minutes."
         }
         error={padError}
         busy={busy}

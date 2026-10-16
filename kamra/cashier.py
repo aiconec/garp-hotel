@@ -85,7 +85,7 @@ def require_open_session(property: str) -> str | None:
 	)
 	if not sess:
 		frappe.throw(
-			"NO_OPEN_SESSION: open your till under Finance → Cashier first.",
+			"NO_OPEN_SESSION: open the POS under Finance → POS first.",
 		)
 	return sess
 
@@ -281,7 +281,7 @@ def close_session(session: str, counted_cash: float,
 	if doc.user != frappe.session.user and not (
 			set(frappe.get_roles()) & {"Hotel Admin", "System Manager",
 			                           "Administrator", "Finance"}):
-		frappe.throw("Only the owning cashier (or Finance) can close this till.")
+		frappe.throw("Only the owning cashier (or Finance) can close this POS session.")
 	from kamra.authz import require_cashier_pin
 	require_cashier_pin(doc.property, pin)
 	totals = _recompute_session_totals(session)

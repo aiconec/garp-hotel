@@ -174,13 +174,13 @@ export default function Billing() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>{t("Cashier till")}</CardTitle>
+            <CardTitle>{t("POS")}</CardTitle>
             <p className="mt-0.5 text-xs text-zinc-400">
-              {t("Open your till, reconcile cash and close the session under Finance → Cashier. Collections live there now.")}
+              {t("Open the POS, reconcile cash and close the session under Finance → POS. Collections live there now.")}
             </p>
           </div>
           <Button variant="outline" onClick={() => navigate("/cashier")}>
-            {t("Open My Till")}
+            {t("Open POS")}
           </Button>
         </CardHeader>
       </Card>

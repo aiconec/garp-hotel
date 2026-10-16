@@ -931,7 +931,7 @@ export default function POS() {
           </button>
           <button onClick={toggleBrowserFs}
             className="rounded-lg border border-zinc-300 bg-white p-2 text-zinc-600 hover:bg-zinc-50"
-            title={browserFs ? t("Exit full screen (Esc)") : t("Full screen till")}>
+            title={browserFs ? t("Exit full screen (Esc)") : t("Full screen POS")}>
             {browserFs ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </button>
           <button onClick={() => { exitFloor(); navigate("/dashboard") }}

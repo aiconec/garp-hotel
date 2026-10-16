@@ -214,13 +214,13 @@ export const APPS: AppDef[] = [
     name: "Finance",
     icon: Landmark,
     tint: APP_TILE,
-    description: "Cashier till, folios, ledgers, night audit and books export.",
+    description: "POS, folios, ledgers, night audit and books export.",
     roles: [
       "Finance", "Front Desk", "Hotel Admin", "System Manager", "Administrator",
     ],
     items: [
       // Cashier
-      { to: "/cashier", label: "My Till", icon: Wallet, group: "Cashier" },
+      { to: "/cashier", label: "POS", icon: Wallet, group: "Cashier" },
       { to: "/cashier/sessions", label: "Sessions", icon: Clock, group: "Cashier" },
       { to: "/cashier/petty-cash", label: "Petty Cash", icon: Banknote, group: "Cashier" },
       { to: "/cashier/shift-report", label: "Shift Report", icon: ScrollText, group: "Cashier" },
