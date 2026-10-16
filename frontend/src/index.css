@@ -17,6 +17,18 @@
 
 html {
   font-feature-settings: "tnum" 1; /* tabular numbers for counts and money */
+  --select-caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2371717a' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
+/* The native select caret sits flush against the border; draw our own with
+   room to breathe. Unlayered on purpose so it beats the px-* utilities. */
+select:not([multiple]) {
+  appearance: none;
+  padding-inline-end: 2.25em;
+  background-image: var(--select-caret);
+  background-repeat: no-repeat;
+  background-position: right 0.75em center;
+  background-size: 1em;
 }
 
 /* Dark mode: every utility reads its color from a CSS variable, so
@@ -24,6 +36,7 @@ html {
    use bg-black so they stay dark in both themes. */
 .dark {
   color-scheme: dark;
+  --select-caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23a7a7b0' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
   --color-white: #1c1c1f;
   --color-zinc-50: #151517;
   --color-zinc-100: #232326;
