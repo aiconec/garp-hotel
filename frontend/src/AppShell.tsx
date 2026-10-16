@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type RefObject } from "react"
 import {
+  ArrowUpRight,
+  Check,
+  ChevronsUpDown,
   LayoutGrid,
   LogOut,
   Menu,
@@ -63,6 +66,37 @@ const BOOKING_ROLES = [
   "Administrator",
 ]
 
+/** Close a popover on an outside click or Escape. */
+function useDismiss(
+  ref: RefObject<HTMLElement | null>,
+  open: boolean,
+  close: () => void,
+) {
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close()
+    }
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close()
+    window.addEventListener("mousedown", onDown)
+    window.addEventListener("keydown", onKey)
+    return () => {
+      window.removeEventListener("mousedown", onDown)
+      window.removeEventListener("keydown", onKey)
+    }
+  }, [ref, open, close])
+}
+
+/** An app opens on its first in-app route. */
+function useOpenApp(after: () => void) {
+  const navigate = useNavigate()
+  return (app: AppDef) => {
+    after()
+    const first = app.items.find((i) => i.to)
+    if (first?.to) navigate(first.to)
+  }
+}
+
 function SearchShortcut() {
   const { t } = useT()
   const isMac = /Mac|iP(hone|ad|od)/.test(navigator.platform)
@@ -113,20 +147,7 @@ function UserMenu({ user, onSignOut }: { user: string; onSignOut: () => void }) 
   const { t } = useT()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
-    window.addEventListener("mousedown", onDown)
-    window.addEventListener("keydown", onKey)
-    return () => {
-      window.removeEventListener("mousedown", onDown)
-      window.removeEventListener("keydown", onKey)
-    }
-  }, [open])
+  useDismiss(ref, open, () => setOpen(false))
 
   const initial = (user || "?").trim().charAt(0).toUpperCase()
   return (
@@ -158,30 +179,26 @@ function UserMenu({ user, onSignOut }: { user: string; onSignOut: () => void }) 
   )
 }
 
-/** App switcher in the top bar: quiet grid, one accent for the current app. */
-function AppSwitcher({ apps, current }: { apps: AppDef[]; current: AppDef }) {
+/** App switcher in the top bar: quiet grid, one accent for the current app.
+ *  Shown only while the sidebar is a drawer; beside the rail, the rail's
+ *  header does the same job. */
+function AppSwitcher({
+  apps,
+  current,
+  className,
+}: {
+  apps: AppDef[]
+  current: AppDef
+  className?: string
+}) {
   const { t } = useT()
   const [open, setOpen] = useState(false)
-  const navigate = useNavigate()
   const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    window.addEventListener("mousedown", onDown)
-    return () => window.removeEventListener("mousedown", onDown)
-  }, [open])
-
-  const go = (app: AppDef) => {
-    setOpen(false)
-    const first = app.items.find((i) => i.to)
-    if (first?.to) navigate(first.to)
-  }
+  useDismiss(ref, open, () => setOpen(false))
+  const go = useOpenApp(() => setOpen(false))
 
   return (
-    <div className="relative" ref={ref}>
+    <div className={cn("relative", className)} ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={t("Switch app")}
@@ -231,6 +248,88 @@ function AppSwitcher({ apps, current }: { apps: AppDef[]; current: AppDef }) {
             onClick={() => setOpen(false)}
             className="mt-1 block rounded-md px-3 py-2 text-center text-xs font-medium text-zinc-500 hover:bg-zinc-50 hover:text-zinc-800"
           >
+            {t("View all apps")}
+          </NavLink>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The rail's header: which app you are in, and the way to the others. It
+ *  used to be a static label styled like a nav item, so it invited a click
+ *  that did nothing. */
+function SidebarAppMenu({ apps, current }: { apps: AppDef[]; current: AppDef }) {
+  const { t } = useT()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useDismiss(ref, open, () => setOpen(false))
+  const go = useOpenApp(() => setOpen(false))
+  const canSwitch = apps.length > 1
+
+  const face = (
+    <>
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700">
+        <current.icon className="size-4" strokeWidth={1.75} aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900">
+        {t(current.name)}
+      </span>
+    </>
+  )
+
+  if (!canSwitch)
+    return <div className="mb-4 flex items-center gap-2.5 px-1.5 py-1.5">{face}</div>
+
+  return (
+    <div className="relative mb-4" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={t("Switch app")}
+        className="flex w-full items-center gap-2.5 rounded-lg border border-zinc-200 bg-white px-1.5 py-1.5 text-left shadow-xs hover:bg-zinc-50"
+      >
+        {face}
+        <ChevronsUpDown className="mr-0.5 size-4 shrink-0 text-zinc-400" aria-hidden />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label={t("Switch app")}
+          className="absolute inset-x-0 top-full z-50 mt-1 max-h-[70vh] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-1 shadow-lg ring-1 ring-black/5"
+        >
+          {apps.map((app) => {
+            const active = app.id === current.id
+            return (
+              <button
+                key={app.id}
+                role="menuitem"
+                onClick={() => go(app)}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm",
+                  active
+                    ? "bg-zinc-100 font-semibold text-zinc-900"
+                    : "font-medium text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
+                )}
+              >
+                <app.icon
+                  className={cn("size-4 shrink-0", active ? "text-brand-600" : "text-zinc-400")}
+                  strokeWidth={1.75}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1 truncate">{t(app.name)}</span>
+                {active && <Check className="size-4 shrink-0 text-brand-600" aria-hidden />}
+              </button>
+            )
+          })}
+          <div className="my-1 border-t border-zinc-200" />
+          <NavLink
+            to="/apps"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+          >
+            <LayoutGrid className="size-4 shrink-0 text-zinc-400" strokeWidth={1.75} aria-hidden />
             {t("View all apps")}
           </NavLink>
         </div>
@@ -329,6 +428,9 @@ export default function AppShell() {
       (aiAllowed || item.to !== "/assistant"),
   )
 
+  // Muted icons, dark labels: the eye reads the words, the icon marks the row.
+  const itemCls =
+    "group flex min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium"
   const renderItem = (item: AppNavItem) =>
     item.href ? (
       <a
@@ -336,10 +438,19 @@ export default function AppShell() {
         href={item.href}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
+        title={t("Opens in a new tab")}
+        className={cn(itemCls, "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900")}
       >
-        <item.icon className="size-4" aria-hidden />
-        {t(item.label)}
+        <item.icon
+          className="size-4 shrink-0 text-zinc-400 group-hover:text-zinc-600"
+          strokeWidth={1.75}
+          aria-hidden
+        />
+        <span className="truncate">{t(item.label)}</span>
+        <ArrowUpRight
+          className="ml-auto size-3.5 shrink-0 text-zinc-300 group-hover:text-zinc-500"
+          aria-hidden
+        />
       </a>
     ) : (
       <NavLink
@@ -348,23 +459,42 @@ export default function AppShell() {
         end={item.to === "/"}
         className={({ isActive }) =>
           cn(
-            "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium",
+            itemCls,
             isActive
               ? "bg-brand-50 text-brand-700"
-              : "text-zinc-600 hover:bg-zinc-100",
+              : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900",
           )
         }
       >
-        <item.icon className="size-4" aria-hidden />
-        {t(item.label)}
+        {({ isActive }) => (
+          <>
+            <item.icon
+              className={cn(
+                "size-4 shrink-0",
+                isActive ? "text-brand-600" : "text-zinc-400 group-hover:text-zinc-600",
+              )}
+              strokeWidth={1.75}
+              aria-hidden
+            />
+            <span className="truncate">{t(item.label)}</span>
+          </>
+        )}
       </NavLink>
     )
 
+  // consecutive items that share a `group` form one labelled section
+  const sections: { label?: string; items: AppNavItem[] }[] = []
+  for (const item of items) {
+    const last = sections[sections.length - 1]
+    if (last && last.label === item.group) last.items.push(item)
+    else sections.push({ label: item.group, items: [item] })
+  }
+
   const sidebar = (
     <>
-      <div className="mb-5 flex items-center gap-2 px-1">
+      <div className="mb-5 flex items-center gap-2.5 px-1.5">
         <img src={asset("kamra-mark.svg")} alt="" className="size-7" aria-hidden />
-        {/* Stacked: "BizConnect.id HOTEL" on one line overflows the w-52 rail. */}
+        {/* Stacked: "BizConnect.id HOTEL" on one line crowds the rail. */}
         <span className="flex flex-col leading-none">
           <span className="text-base font-semibold tracking-tight">
             BizConnect<span className="text-brand-600">.id</span>
@@ -375,45 +505,19 @@ export default function AppShell() {
         </span>
       </div>
 
-      {currentApp && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg px-2 py-1.5">
-          <span
-            className={cn(
-              "flex size-6 items-center justify-center rounded-md",
-              currentApp.tint,
-            )}
-          >
-            <currentApp.icon className="size-3.5" aria-hidden />
-          </span>
-          <span className="text-sm font-semibold text-zinc-800">
-            {t(currentApp.name)}
-          </span>
-        </div>
-      )}
+      {currentApp && <SidebarAppMenu apps={apps} current={currentApp} />}
 
-      <nav className="space-y-0.5">
-        {(() => {
-          const groups: { label?: string; items: typeof items }[] = []
-          for (const item of items) {
-            const g = item.group
-            const last = groups[groups.length - 1]
-            if (!last || last.label !== g) {
-              groups.push({ label: g, items: [item] })
-            } else {
-              last.items.push(item)
-            }
-          }
-          return groups.map((g, gi) => (
-            <div key={g.label ?? `ungrouped-${gi}`} className={gi > 0 ? "mt-3" : undefined}>
-              {g.label ? (
-                <div className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
-                  {t(g.label)}
-                </div>
-              ) : null}
-              <div className="space-y-0.5">{g.items.map(renderItem)}</div>
-            </div>
-          ))
-        })()}
+      <nav aria-label={currentApp ? t(currentApp.name) : undefined}>
+        {sections.map((sec, i) => (
+          <div key={sec.label ?? `top-${i}`} className={i > 0 ? "mt-5" : undefined}>
+            {sec.label && (
+              <div className="mb-1 px-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                {t(sec.label)}
+              </div>
+            )}
+            <div className="space-y-0.5">{sec.items.map(renderItem)}</div>
+          </div>
+        ))}
       </nav>
     </>
   )
@@ -430,7 +534,7 @@ export default function AppShell() {
       {!kiosk && !demoMode && <UpdateNag />}
       <div className="flex min-h-0 flex-1">
       {!kiosk && (
-      <aside className={cn("hidden w-52 shrink-0 border-r border-zinc-200 bg-white px-3 py-5", rail.show)}>
+      <aside className={cn("hidden w-60 shrink-0 border-r border-zinc-200 bg-white px-3 py-5", rail.show)}>
         {sidebar}
       </aside>
       )}
@@ -465,7 +569,7 @@ export default function AppShell() {
           >
             <Menu className="size-5" strokeWidth={1.75} aria-hidden />
           </button>
-          <AppSwitcher apps={apps} current={currentApp ?? apps[0]} />
+          <AppSwitcher apps={apps} current={currentApp ?? apps[0]} className={rail.hide} />
           {properties.length > 1 ? (
             <select
               className="min-w-[5rem] max-w-[10rem] truncate rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm font-medium focus:outline-2 focus:outline-brand-600 sm:max-w-[15rem] xl:max-w-[18rem]"
