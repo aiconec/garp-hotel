@@ -312,8 +312,24 @@ function digitsOnly(raw: string): string {
 }
 
 /**
- * Display form, e.g. `+91 91488 69914`.
- * Leaves numbers that already start with `+` intact (normalized spacing).
+ * Group a national number for reading. India keeps its 5-5 habit; elsewhere
+ * three digits, then the rest split in two: 370 693 880, 812 3456 7890.
+ */
+function groupLocal(dial: string, local: string): string {
+  if (dial === "91" && local.length === 10) {
+    return `${local.slice(0, 5)} ${local.slice(5)}`
+  }
+  if (local.length <= 6) return local
+  const head = local.slice(0, 3)
+  const rest = local.slice(3)
+  if (rest.length <= 4) return `${head} ${rest}`
+  const mid = Math.floor(rest.length / 2)
+  return `${head} ${rest.slice(0, mid)} ${rest.slice(mid)}`
+}
+
+/**
+ * Display form, e.g. `+91 91488 69914`, `+62 370 693 880`.
+ * Numbers that already start with `+` keep their own country code.
  */
 export function formatPhoneDisplay(
   phone: string | null | undefined,
@@ -324,12 +340,10 @@ export function formatPhoneDisplay(
   if (raw.startsWith("+")) {
     const rest = digitsOnly(raw.slice(1))
     if (!rest) return raw
-    // +91XXXXXXXXXX → +91 XXXXX XXXXX-ish grouping by country code length
-    if (rest.length > 10) {
-      const cc = rest.slice(0, rest.length - 10)
-      const local = rest.slice(-10)
-      return `+${cc} ${local.slice(0, 5)} ${local.slice(5)}`
-    }
+    // dial codes are prefix-free, so the first known match is the code
+    // (an India-only "last 10 digits" rule read +62 370... as +6 23706...)
+    const cc = knownDialPrefix(rest)
+    if (cc) return `+${cc} ${groupLocal(cc, rest.slice(cc.length))}`
     return `+${rest}`
   }
   const dial = dialForCountry(country)
@@ -340,10 +354,7 @@ export function formatPhoneDisplay(
   if (local.length > 10 && local.startsWith(dial)) {
     local = local.slice(dial.length)
   }
-  if (local.length === 10) {
-    return `+${dial} ${local.slice(0, 5)} ${local.slice(5)}`
-  }
-  return `+${dial} ${local}`
+  return `+${dial} ${groupLocal(dial, local)}`
 }
 
 /** tel: href value, e.g. `+919876543210`. */
