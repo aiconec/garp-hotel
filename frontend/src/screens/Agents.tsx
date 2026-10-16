@@ -549,7 +549,7 @@ export function ConnectTab({ property }: { property: string }) {
         </CardContent>
       </Card>
       <p className="text-xs text-zinc-400">
-        Need a platform-wide or service key (HeyKoala, unattended jobs)? That
+        Need a platform-wide or service key (unattended jobs)? That
         is issued by your system admin under Developers. Staff should use
         Connect Claude — no API secrets on a laptop.
       </p>

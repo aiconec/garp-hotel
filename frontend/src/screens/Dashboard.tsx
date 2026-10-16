@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRealtime } from "../lib/realtime"
 import {
-  BedDouble, LogIn, Users, Banknote, Wallet, Building2, Brush, Receipt,
+  BedDouble, LogIn, Users, Banknote, Wallet, Building2, Brush, ReceiptText,
   PieChart, TrendingUp, BarChart3,
 } from "lucide-react"
 import { call, getCurrentProperty } from "../lib/api"
@@ -289,7 +289,7 @@ export default function Dashboard() {
 
       {scope === "property" && prop && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
             <Tile icon={PieChart} label={t("Occupancy")} value={`${prop.period.occupancy_pct}%`}
               sub={isToday ? t("{n} rooms", { n: prop.total_rooms }) : period} tone="text-brand-600" />
             <Tile icon={TrendingUp} label={t("ADR")} value={`${cur()}${inr(prop.period.adr)}`}
@@ -300,7 +300,7 @@ export default function Dashboard() {
               sub={period} />
             <Tile icon={Wallet} label={t("Collections")} value={`${cur()}${inr(prop.period.collections)}`}
               sub={period} />
-            <Tile icon={Receipt} label={t("Outstanding")} value={`${cur()}${inr(prop.finance.outstanding)}`}
+            <Tile icon={ReceiptText} label={t("Outstanding")} value={`${cur()}${inr(prop.finance.outstanding)}`}
               sub={t("receivable")} />
           </div>
 
@@ -343,7 +343,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-1.5"><Receipt className="size-4 text-brand-600" />{t("Finance")}</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-1.5"><ReceiptText className="size-4 text-brand-600" />{t("Finance")}</CardTitle></CardHeader>
               <CardContent className="space-y-1.5 text-sm">
                 <Row label={isToday ? t("Collected today") : t("Collected ({period})", { period })}
                   value={`${cur()}${inr(prop.period.collections)}`} />
@@ -357,7 +357,7 @@ export default function Dashboard() {
 
       {scope === "portfolio" && port && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
             <Tile icon={Building2} label={t("Properties")} value={String(port.totals.properties)}
               sub={t("{n} rooms", { n: port.totals.total_rooms })} />
             <Tile icon={BedDouble} label={t("Occupancy")} value={`${port.totals.occupancy_pct}%`} sub={period} tone="text-brand-600" />

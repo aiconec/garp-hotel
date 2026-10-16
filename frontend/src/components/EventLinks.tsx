@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { PartyPopper, Receipt } from "lucide-react"
+import { PartyPopper, ReceiptText } from "lucide-react"
 
 import { call } from "../lib/api"
 import { serverError, type Row } from "../lib/resource"
@@ -70,7 +70,7 @@ export default function EventLinks({
             }
           }}
         >
-          <Receipt className="size-4" aria-hidden />
+          <ReceiptText className="size-4" aria-hidden />
           Open group folio (bill this event)
         </Button>
       )}

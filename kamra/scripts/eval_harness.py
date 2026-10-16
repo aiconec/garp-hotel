@@ -64,7 +64,7 @@ def setup():
 			}).insert(ignore_permissions=True)
 	if not frappe.db.exists("Property", P):
 		frappe.get_doc({
-			"doctype": "Property", "property_name": P, "city": "Testville",
+			"doctype": "Property", "property_name": P, "country": "India", "currency": "INR", "city": "Testville",
 			"gst_mode": "Slab", "gst_slab_threshold": 7500,
 			"gst_rate_low": 5, "gst_rate_high": 18,
 		}).insert(ignore_permissions=True)
@@ -1215,7 +1215,7 @@ def t32():
 	P2 = "EVAL Yield Hotel"
 	if not frappe.db.exists("Property", P2):
 		frappe.get_doc({
-			"doctype": "Property", "property_name": P2, "city": "Testville",
+			"doctype": "Property", "property_name": P2, "country": "India", "currency": "INR", "city": "Testville",
 			"gst_mode": "Fixed", "gst_rate_low": 5, "gst_rate_high": 5,
 		}).insert(ignore_permissions=True)
 	rt = frappe.get_doc({
@@ -1294,7 +1294,7 @@ def t33():
 	P3 = "EVAL Import Hotel"
 	if not frappe.db.exists("Property", P3):
 		frappe.get_doc({
-			"doctype": "Property", "property_name": P3, "city": "Testville",
+			"doctype": "Property", "property_name": P3, "country": "India", "currency": "INR", "city": "Testville",
 			"gst_mode": "Fixed", "gst_rate_low": 5, "gst_rate_high": 5,
 		}).insert(ignore_permissions=True)
 	rt = frappe.get_doc({
@@ -2309,10 +2309,12 @@ def t47d():
 	from kamra.folio import open_folio
 	from kamra.localization.india import cashfree
 
-	# India (EVAL Hotel has no country, so it runs on the India pack)
+	# India (EVAL Hotel is created with country India).
+	# GARP Hotel doesn't offer Kamra Verify (a vendor-hosted service).
 	assert loc.integrations(loc.pack_for(P)) == {
 		"payment_gateways": ["Razorpay", "Cashfree"], "tax_return": True,
-		"verify_tax_id": True, "verify_guest_id": True}, loc.integrations(loc.pack_for(P))
+		"verify_tax_id": loc.VENDOR_VERIFY_OFFERED,
+		"verify_guest_id": loc.VENDOR_VERIFY_OFFERED}, loc.integrations(loc.pack_for(P))
 
 	SA = "EVAL Riyadh Hotel"
 	if not frappe.db.exists("Property", SA):
@@ -2401,10 +2403,17 @@ def t47d():
 	s.save(ignore_permissions=True)
 	client.use_transport(hub)
 	try:
-		out = api.verify_tax_id(P, "29ABCDE1234F1Z5", "Eval")
+		if loc.VENDOR_VERIFY_OFFERED:
+			out = api.verify_tax_id(P, "29ABCDE1234F1Z5", "Eval")
+		else:
+			# GARP Hotel: refused before anything reaches the vendor's hub
+			assert refused(lambda: api.verify_tax_id(P, "29ABCDE1234F1Z5", "Eval"))
 	finally:
 		client.use_transport()
-	assert out["legal_name"] == "Eval Pvt Ltd" and calls == [("verify_gstin", "eval-connect-key")], (out, calls)
+	if loc.VENDOR_VERIFY_OFFERED:
+		assert out["legal_name"] == "Eval Pvt Ltd" and calls == [("verify_gstin", "eval-connect-key")], (out, calls)
+	else:
+		assert calls == [], calls
 	# ID reading needs the guest to have been told
 	assert refused(lambda: loc.verify_guest_id(loc.pack_for(P), P, "x", "Aadhaar", 0))
 
@@ -2452,7 +2461,7 @@ def t48():
 		params = sent[0]["template"]["components"][0]["parameters"]
 		assert len(params) == 4 and params[1]["text"], params
 		assert sent[1]["template"]["name"] == "kamra_precheckin_link"
-		assert "/kamra/checkin/" in sent[1]["template"]["components"][0][
+		assert "/hotel/checkin/" in sent[1]["template"]["components"][0][
 			"parameters"][1]["text"]
 
 		rows = frappe.get_all("WhatsApp Message",
@@ -3600,19 +3609,62 @@ def t83():
 		"agent identity must never write custom DocPerms"
 	assert AGENT_ROLE in frappe.get_roles(AGENT_EMAIL), "agent lacks its role"
 
+	def refused(fn):
+		try:
+			fn()
+		except (frappe.ValidationError, frappe.PermissionError):
+			return True
+		return False
+
+	# an existing guest with this phone must not be reused or rewritten
+	existing = _guest("Phone Owner", "+919812300083")
+	frappe.db.set_value("Guest", existing, "email", "owner@example.com")
+	ci, co = add_days(nowdate(), 40), add_days(nowdate(), 42)
+
 	frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
 	try:
 		out = public_api.book(
-			property=P, room_type=RT, check_in_date="2031-03-10",
-			check_out_date="2031-03-12", guest_name="Web Guest",
-			phone="+919812300083", adults=1, children=0,
+			property=P, room_type=RT, check_in_date=ci,
+			check_out_date=co, guest_name="Web Guest",
+			phone="+919812300083", email="web.guest@example.com",
+			adults=1, children=0,
 		)
 		assert frappe.session.user == "Guest", "book() must hand the session back"
+		# no email, a year-long stay, or far ahead: refused
+		assert refused(lambda: public_api.book(
+			property=P, room_type=RT, check_in_date=ci, check_out_date=co,
+			guest_name="No Mail", phone="+919812300084"))
+		assert refused(lambda: public_api.book(
+			property=P, room_type=RT, check_in_date=ci,
+			check_out_date=add_days(ci, 365), guest_name="Long Stay",
+			phone="+919812300085", email="long@example.com"))
+		assert refused(lambda: public_api.book(
+			property=P, room_type=RT, check_in_date=add_days(nowdate(), 900),
+			check_out_date=add_days(nowdate(), 902), guest_name="Far Ahead",
+			phone="+919812300086", email="far@example.com"))
+		# a wrong code never confirms the held stay
+		assert refused(lambda: public_api.confirm_booking(out["reservation"], "000000x"))
 	finally:
 		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
 	res = frappe.get_doc("Reservation", out["reservation"])
 	assert res.source == "Website", res.source
 	assert res.property == P
+	assert res.status == "Held" and out["verify"], (res.status, out)
+	assert res.guest != existing, "public booking reused a phone-matched guest"
+	assert frappe.db.get_value("Guest", existing, "email") == "owner@example.com"
+
+	# with the booking engine switched off, nothing is sold
+	frappe.db.set_value("Property", P, "booking_engine_enabled", 0)
+	frappe.clear_document_cache("Property", P)
+	try:
+		frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- controlled user context switch
+		assert refused(lambda: public_api.book(
+			property=P, room_type=RT, check_in_date=ci, check_out_date=co,
+			guest_name="Engine Off", phone="+919812300087", email="off@example.com"))
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+		frappe.db.set_value("Property", P, "booking_engine_enabled", 1)
+		frappe.clear_document_cache("Property", P)
 
 
 @check("property scope: restricted staff can't read another property's stays")
@@ -3625,7 +3677,7 @@ def t84():
 	other = "EVAL Scope Hotel"
 	if not frappe.db.exists("Property", other):
 		frappe.get_doc({
-			"doctype": "Property", "property_name": other, "city": "Elsewhere",
+			"doctype": "Property", "property_name": other, "country": "India", "currency": "INR", "city": "Elsewhere",
 			"gst_mode": "Slab", "gst_slab_threshold": 7500,
 			"gst_rate_low": 5, "gst_rate_high": 18,
 		}).insert(ignore_permissions=True)

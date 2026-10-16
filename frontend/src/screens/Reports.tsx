@@ -109,7 +109,7 @@ export default function Reports() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-lg font-semibold">{t("Manager flash")}</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             to="/cashier/shift-report"
             className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50"

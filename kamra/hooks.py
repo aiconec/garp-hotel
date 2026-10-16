@@ -55,8 +55,6 @@ scheduler_events = {
 		# 04:45 - drop old kamrapms.com Hosting Enquiry leads (default 24 months;
 		# Won / converted stays; site_config hosting_enquiry_retention_months)
 		"45 4 * * *": ["kamra.hosting_enquiry_retention.purge_expired_hosting_enquiries"],
-		# 06:00 and 18:00 - warm the GitHub latest-release cache for the update nag
-		"0 6,18 * * *": ["kamra.health.poll_github_releases"],
 	},
 }
 
@@ -262,6 +260,22 @@ doc_events["Reservation"] = {
 	              "kamra.channel_manager.on_reservation_change"],
 	"on_trash": "kamra.realtime.notify",
 }
+
+# Money records are written only by Kamra's own endpoints; Frappe's generic
+# REST / Desk save paths are refused for them (kamra.authz.guard_money_write).
+_MONEY_DOCTYPES = (
+	"Folio", "Folio Ledger Entry", "Folio Reprint", "Proforma Folio",
+	"Cashier", "Cashier PIN", "Cashier Session", "Cashier Transaction",
+	"City Ledger Account", "City Ledger Entry", "Credit Note",
+	"Cancelled Invoice", "Security Deposit", "Exchange Rate",
+	"Exchange Transaction", "Petty Cash Voucher",
+)
+for _dt in _MONEY_DOCTYPES:
+	_ev = doc_events.setdefault(_dt, {})
+	for _event in ("validate", "on_trash"):
+		_existing = _ev.get(_event)
+		_handlers = _existing if isinstance(_existing, list) else ([_existing] if _existing else [])
+		_ev[_event] = ["kamra.authz.guard_money_write", *_handlers]
 
 # Scheduled Tasks
 # ---------------

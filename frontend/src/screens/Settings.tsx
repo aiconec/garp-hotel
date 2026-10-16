@@ -186,12 +186,14 @@ function SettingsCard(props: {
 }
 
 const TIMEZONES = [
+  "Asia/Jakarta",
+  "Asia/Makassar",
+  "Asia/Jayapura",
   "Asia/Aden",
   "Asia/Riyadh",
   "Asia/Dubai",
   "Asia/Muscat",
   "Asia/Kolkata",
-  "Asia/Jakarta",
   "Asia/Bangkok",
   "Asia/Singapore",
   "Europe/London",
@@ -698,6 +700,31 @@ type AiPreset = {
   processor_note?: string
 }
 
+/** BizConnect.id switches the assistant on per site (site config kamra_ai_enabled);
+ *  where it's off, the key form would only mislead an admin. */
+function AiAssistantSection(props: { property: string; doc: Doc; onSaved: () => void }) {
+  const { t } = useT()
+  const [allowed, setAllowed] = useState<boolean | null>(null)
+  useEffect(() => {
+    call<{ allowed?: boolean }>("kamra.assistant.assistant_status", { property: props.property })
+      .then((s) => setAllowed(s.allowed !== false))
+      .catch(() => setAllowed(false))
+  }, [props.property])
+  if (allowed === null) return null
+  if (!allowed)
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("AI assistant")}</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-zinc-500">
+          {t("Not available on this site yet. BizConnect.id switches it on per site.")}
+        </CardContent>
+      </Card>
+    )
+  return <AiAssistantCard {...props} />
+}
+
 function AiAssistantCard({
   property,
   doc,
@@ -1143,7 +1170,7 @@ export default function Settings() {
 
       {(loc.integrations.verify_tax_id || loc.integrations.verify_guest_id) && <KamraVerifyCard />}
 
-      <AiAssistantCard property={property} doc={ai} onSaved={load} />
+      <AiAssistantSection property={property} doc={ai} onSaved={load} />
 
       <SettingsCard
         title="Revenue controls"
@@ -1207,7 +1234,7 @@ export default function Settings() {
           <CardTitle>{t("Appearance")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="w-20 text-sm font-medium text-zinc-600">{t("Theme")}</span>
             <select
               className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-brand-600"
@@ -1226,7 +1253,7 @@ export default function Settings() {
               {t("applies to this browser only")}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="w-20 text-sm font-medium text-zinc-600">{t("Language")}</span>
             <select
               className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-brand-600"

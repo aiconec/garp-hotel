@@ -35,7 +35,36 @@ def pack_for(property: str | None = None):
 	country = None
 	if property:
 		country = frappe.get_cached_value("Property", property, "country")
-	return pack_for_country(country or "India")
+	# GARP Hotel runs Indonesian properties; a blank country gets that pack
+	return pack_for_country(country or "Indonesia")
+
+
+# locales that group thousands with "." and use "," for decimals (Rp1.430.000)
+_DECIMAL_COMMA = {"id", "de", "es", "it", "nl", "pt", "tr", "vi"}
+
+
+def format_money(property: str | None, amount, decimals: int | None = None) -> str:
+	"""Symbol and amount written the way the property's country writes money:
+	Rp1.430.000 in Indonesia, RM1,430.50 in Malaysia. `decimals=None` shows
+	cents only when the amount has them."""
+	sym, lang = "", ""
+	try:
+		if property:
+			loc = pack_for(property).locale(frappe.get_cached_doc("Property", property))
+			sym = str(loc.get("currency_symbol", ""))
+			lang = str(loc.get("locale") or "").split("-")[0].lower()
+	except Exception:
+		pass
+	try:
+		n = float(amount or 0)
+	except (TypeError, ValueError):
+		return f"{sym}{amount}"
+	if decimals is None:
+		decimals = 0 if n == int(n) else 2
+	s = f"{n:,.{decimals}f}"
+	if lang in _DECIMAL_COMMA:
+		s = s.translate(str.maketrans(",.", ".,"))
+	return f"{sym}{s}"
 
 
 def pack_for_country(country: str):
@@ -258,8 +287,13 @@ def tax_return_rows(pack, property: str | None, from_date: str, to_date: str):
 	return fn(property, from_date, to_date)
 
 
+# GARP Hotel: the India pack's Verify checks run on Kamra's own hosted hub
+# (Kamra Connect, a paid vendor service). GARP builds don't offer it.
+VENDOR_VERIFY_OFFERED = False
+
+
 def verify_tax_id(pack, property: str, tax_id: str, business_name: str = ""):
-	fn = getattr(pack, "verify_tax_id", None)
+	fn = getattr(pack, "verify_tax_id", None) if VENDOR_VERIFY_OFFERED else None
 	if not fn:
 		_not_offered(frappe._("Tax ID verification"))
 	return fn(property, tax_id, business_name)
@@ -267,7 +301,7 @@ def verify_tax_id(pack, property: str, tax_id: str, business_name: str = ""):
 
 def verify_guest_id(pack, property: str, guest: str, id_type: str,
                     consent: int = 0):
-	fn = getattr(pack, "verify_guest_id", None)
+	fn = getattr(pack, "verify_guest_id", None) if VENDOR_VERIFY_OFFERED else None
 	if not fn:
 		_not_offered(frappe._("Guest ID verification"))
 	return fn(property, guest, id_type, consent)
@@ -279,8 +313,8 @@ def integrations(pack) -> dict:
 	return {
 		"payment_gateways": payment_gateways(pack),
 		"tax_return": bool(getattr(pack, "tax_return_rows", None)),
-		"verify_tax_id": bool(getattr(pack, "verify_tax_id", None)),
-		"verify_guest_id": bool(getattr(pack, "verify_guest_id", None)),
+		"verify_tax_id": VENDOR_VERIFY_OFFERED and bool(getattr(pack, "verify_tax_id", None)),
+		"verify_guest_id": VENDOR_VERIFY_OFFERED and bool(getattr(pack, "verify_guest_id", None)),
 	}
 
 

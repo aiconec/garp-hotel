@@ -94,12 +94,16 @@ export default function Assistant() {
   const [error, setError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null)
+  const [aiAllowed, setAiAllowed] = useState(true)
 
   useEffect(() => {
-    call<{ enabled: boolean }>("kamra.assistant.assistant_status", {
+    call<{ enabled: boolean; allowed?: boolean }>("kamra.assistant.assistant_status", {
       property: getCurrentProperty(),
     })
-      .then((s) => setAiEnabled(s.enabled))
+      .then((s) => {
+        setAiEnabled(s.enabled)
+        setAiAllowed(s.allowed !== false)
+      })
       .catch(() => setAiEnabled(true))
   }, [])
 
@@ -286,7 +290,12 @@ export default function Assistant() {
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
-          {msgs.length === 0 && aiEnabled === false && (
+          {msgs.length === 0 && aiEnabled === false && !aiAllowed && (
+            <p className="mx-auto max-w-md py-12 text-center text-sm text-zinc-500">
+              The AI assistant isn't available on this site yet. BizConnect.id switches it on per site.
+            </p>
+          )}
+          {msgs.length === 0 && aiEnabled === false && aiAllowed && (
             <div className="py-8">
               <AiSetupNotice />
             </div>

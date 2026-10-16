@@ -1092,7 +1092,7 @@ export function BookingDialog(props: {
                 )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(9.5rem,1.6fr)_repeat(3,minmax(0,1fr))]">
                   <Field label={t("Check-in")}>
                     <input
                       type="date"

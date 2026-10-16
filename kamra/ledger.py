@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 import frappe
+from kamra.localization import format_money
 from frappe.utils import now_datetime, nowdate
 
 from kamra.authz import require_roles
@@ -732,7 +733,7 @@ def quick_checkout(reservation: str, pin: str | None = None):
 			transfer_to_city_ledger(folio_name, company)
 		else:
 			frappe.throw(
-				f"Balance ₹{float(folio.balance):,.2f} remains - collect payment "
+				f"Balance {format_money(folio.property, float(folio.balance))} remains - collect payment "
 				"or transfer to city ledger first.")
 	close_folio(folio_name, pin=pin)
 	return check_out(reservation)

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import {
   Building2,
   PartyPopper,
-  Receipt,
+  ReceiptText,
   UserCircle2,
   Users,
 } from "lucide-react"
@@ -82,7 +82,7 @@ export default function LinkedRecords({
           onClick={() => navigate(`/billing/${encodeURIComponent(f.name)}`)}
           title={f.invoice_number ? `Invoice ${f.invoice_number}` : "Open folio"}
         >
-          <Receipt className="size-3.5" aria-hidden />
+          <ReceiptText className="size-3.5" aria-hidden />
           {f.folio_type} folio
           <span
             className={

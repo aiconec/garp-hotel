@@ -7,7 +7,7 @@ import {
 } from "react"
 import { Columns3, Download, Plus, Search, Trash2 } from "lucide-react"
 import { Sheet } from "./ui/sheet"
-import { getCurrentProperty } from "../lib/api"
+import { getCurrentProperty, withoutProperty } from "../lib/api"
 import {
   createResource,
   deleteResource,
@@ -22,7 +22,7 @@ import { Button } from "./ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import ImageField from "./ImageField"
 import { moneyLocale } from "../lib/money"
-import { useT, t as translate } from "../lib/i18n"
+import { useT, tValue } from "../lib/i18n"
 
 export interface FieldSpec {
   field: string
@@ -165,19 +165,20 @@ function FieldInput(props: {
 
 const BADGE_TONES: Record<string, "green" | "sky" | "amber" | "rose" | "zinc"> = {
   Confirmed: "green", "Checked In": "sky", "Checked Out": "zinc",
-  Cancelled: "rose", "No Show": "rose", Waitlist: "amber",
+  Cancelled: "rose", "No Show": "rose", Waitlist: "amber", Held: "amber",
+  Requested: "amber", "Pending Payment": "amber",
   Open: "amber", Closed: "zinc", Enquiry: "amber", Completed: "zinc",
   Clean: "green", Dirty: "amber", Inspected: "sky", "Out of Order": "rose",
   "In Progress": "sky", Done: "green",
 }
 
-const cellValue = (v: unknown, t: (s: string) => string = translate) =>
+const cellValue = (v: unknown) =>
   typeof v === "number"
     ? v.toLocaleString(moneyLocale(), { maximumFractionDigits: 2 })
     : v == null || v === ""
       ? "-"
       : typeof v === "string"
-        ? t(v)
+        ? tValue(v)
         : String(v)
 
 export function ResourceScreen({
@@ -439,8 +440,8 @@ export function ResourceScreen({
               </select>
             ))}
             {config.dateFilter && (
-              <div className="flex items-center gap-1.5 text-sm text-zinc-500">
-                <span className="text-xs">{t(config.dateFilter.label)}</span>
+              <div className="flex flex-wrap items-center gap-1.5 text-sm text-zinc-500">
+                <span className="whitespace-nowrap text-xs">{t(config.dateFilter.label)}</span>
                 <input
                   type="date"
                   aria-label={`${t(config.dateFilter.label)} ${t("from")}`}
@@ -519,7 +520,15 @@ export function ResourceScreen({
             <thead>
               <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
                 {visibleCols.map((c) => (
-                  <th key={c.field} className="py-2 pr-4">
+                  <th
+                    key={c.field}
+                    className={
+                      "whitespace-nowrap py-2 pr-4" +
+                      (rows.some((r) => typeof r[c.field] === "number")
+                        ? " text-right"
+                        : "")
+                    }
+                  >
                     {t(c.label)}
                   </th>
                 ))}
@@ -532,27 +541,31 @@ export function ResourceScreen({
                   className="cursor-pointer hover:bg-zinc-50"
                   onClick={() => openEdit(row)}
                 >
-                  {visibleCols.map((c) => (
-                    <td
-                      key={c.field}
-                      className={
-                        "py-2.5 pr-4" +
-                        (typeof row[c.field] === "number"
-                          ? " text-right tabular-nums"
-                          : "")
-                      }
-                    >
-                      {c.badge && row[c.field] ? (
-                        <Badge
-                          tone={BADGE_TONES[String(row[c.field])] ?? "zinc"}
-                        >
-                          {t(String(row[c.field]))}
-                        </Badge>
-                      ) : (
-                        cellValue(row[c.field], t)
-                      )}
-                    </td>
-                  ))}
+                  {visibleCols.map((c) => {
+                    const v = withoutProperty(row[c.field])
+                    // short values stay on one line (the table scrolls);
+                    // free text is cut with the full value on hover
+                    const long = typeof v === "string" && v.length > 48
+                    return (
+                      <td
+                        key={c.field}
+                        title={long ? (v as string) : undefined}
+                        className={
+                          "whitespace-nowrap py-2.5 pr-4" +
+                          (typeof v === "number" ? " text-right tabular-nums" : "") +
+                          (long ? " max-w-xs truncate" : "")
+                        }
+                      >
+                        {c.badge && v ? (
+                          <Badge tone={BADGE_TONES[String(v)] ?? "zinc"}>
+                            {tValue(String(v))}
+                          </Badge>
+                        ) : (
+                          cellValue(v)
+                        )}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
               {rows.length === 0 && (

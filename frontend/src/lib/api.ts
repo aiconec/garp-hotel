@@ -343,6 +343,13 @@ export function getCurrentProperty() {
   return currentProperty
 }
 
+/** Rooms, room types, outlets and venues are named "<property>-<code>".
+ *  Inside one property's screens, show the part the desk actually uses. */
+export function withoutProperty<T>(v: T): T | string {
+  const prefix = currentProperty + "-"
+  return typeof v === "string" && v.startsWith(prefix) ? v.slice(prefix.length) : v
+}
+
 export function setCurrentProperty(p: string) {
   currentProperty = p
   localStorage.setItem("kamra_property", p)

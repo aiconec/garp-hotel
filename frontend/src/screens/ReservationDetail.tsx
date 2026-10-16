@@ -16,6 +16,7 @@ import {
 
 import {
   amendStay,
+  call,
   checkIn,
   checkOut,
   idDocumentImage,
@@ -540,6 +541,20 @@ export default function ReservationDetail({
 
       {/* primary actions */}
       <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-4">
+        {/* a website booking waiting on its emailed code (or a request) the
+            desk has confirmed with the guest by phone */}
+        {(d.status === "Held" || d.status === "Requested") && (
+          <Button
+            disabled={busy}
+            onClick={() =>
+              act(async () => {
+                await call("kamra.api.confirm_pending_reservation", { reservation: name })
+              })
+            }
+          >
+            <ShieldCheck className="size-4" /> Confirm booking
+          </Button>
+        )}
         {d.status === "Waitlist" && (
           <Button
             disabled={busy}

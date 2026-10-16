@@ -15,6 +15,7 @@ export interface LangDef {
 /** Supported UI languages. Add a row + a locales/<code>.json to ship another. */
 export const LANGS: LangDef[] = [
   { code: "en", nativeLabel: "English", englishLabel: "English", dir: "ltr" },
+  { code: "id", nativeLabel: "Bahasa Indonesia", englishLabel: "Indonesian", dir: "ltr" },
   { code: "ar", nativeLabel: "العربية", englishLabel: "Arabic", dir: "rtl" },
 ]
 
@@ -28,7 +29,14 @@ export function langDef(code: string): LangDef {
 }
 
 export const getLang = (): Lang => {
-  const raw = localStorage.getItem(KEY) || "en"
+  let raw: string | null = null
+  try {
+    raw = localStorage.getItem(KEY)
+  } catch {
+    /* storage blocked: fall back to the browser's language */
+  }
+  // first visit on this device: an Indonesian browser gets Bahasa Indonesia
+  if (!raw) raw = navigator.language?.toLowerCase().startsWith("id") ? "id" : "en"
   return codes.has(raw) ? raw : "en"
 }
 

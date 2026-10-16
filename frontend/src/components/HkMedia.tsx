@@ -6,7 +6,7 @@
  *  the front desk (per-room, to confirm a room is guest-ready). */
 
 import { useCallback, useEffect, useState } from "react"
-import { Camera, X } from "lucide-react"
+import { X } from "lucide-react"
 import { call } from "../lib/api"
 import { serverError, type Row } from "../lib/resource"
 
@@ -127,41 +127,31 @@ export function HkTaskMediaPanel({ row }: { row: Row; reload: () => void }) {
   )
 }
 
-/** Front desk — a small camera button for a room. On click it fetches that
- *  room's recent cleaning media and opens the viewer, so reception can confirm
- *  the room is genuinely guest-ready. */
-export function RoomMediaButton({ room }: { room: string }) {
-  const [open, setOpen] = useState(false)
+/** Front desk — a room's recent cleaning photos/videos, so reception can
+ *  confirm the room is genuinely guest-ready. Fetches on mount; Esc closes. */
+export function RoomMediaDialog({ room, onClose }: { room: string; onClose: () => void }) {
   const [urls, setUrls] = useState<string[] | null>(null)
-
-  async function show(e: React.MouseEvent) {
-    e.stopPropagation() // don't trigger the tile's status-cycle click
-    setOpen(true)
-    if (urls === null) {
-      try {
-        setUrls(await call<string[]>("kamra.api.hk_room_media", { room }))
-      } catch {
-        setUrls([])
-      }
-    }
-  }
+  useEffect(() => {
+    call<string[]>("kamra.api.hk_room_media", { room })
+      .then(setUrls)
+      .catch(() => setUrls([]))
+  }, [room])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Cleaning photos"
-        onClick={show}
-        className="absolute bottom-1 right-1 rounded-full bg-white/80 p-1 text-zinc-600 shadow-sm hover:text-brand-700"
-      >
-        <Camera className="size-3.5" />
-      </button>
-      {open && (
+      {(
         <div
+          role="dialog"
+          aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           onClick={(e) => {
             e.stopPropagation()
-            setOpen(false)
+            onClose()
           }}
         >
           <div
@@ -175,7 +165,7 @@ export function RoomMediaButton({ room }: { room: string }) {
               <button
                 type="button"
                 aria-label="Close"
-                onClick={() => setOpen(false)}
+                onClick={onClose}
                 className="text-zinc-400 hover:text-zinc-700"
               >
                 <X className="size-5" />

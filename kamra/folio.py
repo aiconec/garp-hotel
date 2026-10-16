@@ -8,6 +8,7 @@ a correct multi-rate invoice - the PRD's FR-60.
 from decimal import Decimal
 
 import frappe
+from kamra.localization import format_money
 from frappe.utils import add_days, getdate, now_datetime, nowdate
 
 FNB_GST = 5.0  # F&B / meal-plan GST rate (India default; kept for imports)
@@ -499,7 +500,7 @@ def split_charge(from_folio: str, charge_row: str, to_folio: str,
 	else:
 		frappe.throw("Give a percent or an amount to split off.")
 	if part <= 0 or part >= base:
-		frappe.throw(f"Split must be between 0 and ₹{base} (exclusive).")
+		frappe.throw(f"Split must be between 0 and {format_money(dst.property, base)} (exclusive).")
 	if row.get("is_alcohol") and dst.folio_type in ("Company", "Group"):
 		frappe.throw("Alcohol cannot be billed to a company folio.")
 
@@ -615,7 +616,7 @@ def post_allowance(folio_name: str, amount: float, reason: str,
 	folio.save(ignore_permissions=True)
 	from kamra.savings import log_action
 	log_action("post_allowance", "Folio", folio.name, folio.property,
-	           rationale=f"Allowance ₹{amount:.0f} - {reason.strip()}")
+	           rationale=f"Allowance {format_money(folio.property, amount, 0)} - {reason.strip()}")
 	return folio.name
 
 
@@ -641,7 +642,7 @@ def void_charge(folio_name: str, charge_row: str, reason: str = "") -> dict:
 	from kamra.savings import log_action
 	log_action("void_charge", "Folio", folio.name, folio.property,
 	           rationale=f"Removed {removed['charge_type']} "
-	                     f"{removed['description']} ₹{removed['amount']}"
+	                     f"{removed['description']} {format_money(folio.property, removed['amount'])}"
 	                     + (f" - {reason}" if reason else ""))
 	return {"folio": folio.name, "removed": removed, "balance": folio.balance}
 
@@ -713,9 +714,15 @@ def cancel_invoice(folio_name: str, reason: str) -> dict:
 	return {"cancelled": old, "folio": folio.name}
 
 
-def run_night_audit(property: str, business_date: str | None = None) -> dict:
+def run_night_audit(property: str, business_date: str | None = None,
+                    scheduled: bool = False) -> dict:
 	"""Automated end-of-day: open missing folios, post the night's room
-	charges for every in-house guest, flag no-shows. Idempotent per date."""
+	charges for every in-house guest, flag no-shows. Idempotent per date.
+
+	A day can't be closed before it has started at the property, so a second
+	press of the button can't post tomorrow's nights. The 03:00 run
+	(scheduled=True) only closes days that have already ended, so a desk that
+	audited in the evening isn't rolled a further day ahead overnight."""
 	# In non-request contexts (the 3 AM scheduler, bench console) frappe.local.lang
 	# is unset, which makes Frappe's number/currency formatting raise
 	# UnboundLocalError. Default it so the audit runs everywhere.
@@ -732,6 +739,19 @@ def run_night_audit(property: str, business_date: str | None = None) -> dict:
 			                 {"property": property,
 			                  "business_date": business_date}):
 		return {"already_ran": True, "audit": audit_name}
+
+	from kamra.business_date import property_today
+	today = property_today(property)
+	if scheduled and getdate(business_date) >= getdate(today):
+		return {"skipped": True, "business_date": business_date,
+		        "reason": f"{business_date} has not ended yet at {property}."}
+	if getdate(business_date) > getdate(today):
+		frappe.throw(
+			f"The business date is already {business_date}, ahead of today "
+			f"({today}) at {property}. Its night audit can run from "
+			f"{business_date} onwards.",
+			title="Night audit already done for today",
+		)
 
 	log_lines = []
 	folios_opened = charges_posted = no_shows = 0
@@ -783,7 +803,7 @@ def run_night_audit(property: str, business_date: str | None = None) -> dict:
 			if fee:
 				amount_posted += Decimal(str(fee))
 				log_lines.append(
-					f"posted no-show charge ₹{fee:,.0f} for {row.name}")
+					f"posted no-show charge {format_money(res.property, fee, 0)} for {row.name}")
 
 	# purge stale waitlist entries - two days after their requested departure
 	from frappe.utils import add_days as _add_days
@@ -843,6 +863,6 @@ def nightly_audit_all_properties():
 	"""Scheduler entry point - runs the audit for every active property."""
 	for p in frappe.get_all("Property", filters={"disabled": 0}):
 		try:
-			run_night_audit(p.name)
+			run_night_audit(p.name, scheduled=True)
 		except Exception:
 			frappe.log_error(title=f"Night audit failed: {p.name}")

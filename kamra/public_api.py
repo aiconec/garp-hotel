@@ -5,13 +5,49 @@ Write: one endpoint, create a Website booking. Everything else stays
 behind auth. Money still comes only from the pricing engine.
 """
 
+import hashlib
+import hmac
 import re
+import secrets
 
 import frappe
 from frappe.rate_limiter import rate_limit
-from frappe.utils import cint, date_diff
+from frappe.utils import add_to_date, cint, date_diff, escape_html, now_datetime, nowdate
 
 from kamra.booking_slugs import resolve_public_slug, slugify
+
+# Anonymous bookings: how long a stay may be and how far ahead it may start.
+# A hotel can change either in site_config (kamra_public_max_nights,
+# kamra_public_max_days_ahead).
+PUBLIC_MAX_NIGHTS = 30
+PUBLIC_MAX_DAYS_AHEAD = 400
+# A website booking with nothing to pay online holds its room this long while
+# the guest enters the code we email them; unconfirmed holds are released by
+# reservation_state.expire_holds.
+VERIFY_MINUTES = 30
+VERIFY_MAX_TRIES = 5
+
+
+def _assert_publicly_bookable(prop, check_in_date: str, check_out_date: str,
+                              room_type: str | None = None):
+	"""The booking page may only sell what the hotel has switched on, for a
+	sane stay. Desk and OTA bookings never come through here."""
+	if cint(prop.get("disabled")) or not cint(prop.get("booking_engine_enabled")):
+		frappe.throw("Online booking isn't available for this property.")
+	if room_type:
+		rt = frappe.db.get_value("Room Type", room_type,
+		                         ["property", "disabled"], as_dict=True)
+		if not rt or rt.property != prop.name or cint(rt.disabled):
+			frappe.throw("This room type can't be booked online.")
+	nights = date_diff(check_out_date, check_in_date)
+	max_nights = cint(frappe.conf.get("kamra_public_max_nights") or PUBLIC_MAX_NIGHTS)
+	if nights < 1:
+		frappe.throw("Check-out must be after check-in.")
+	if nights > max_nights:
+		frappe.throw(f"Stays longer than {max_nights} nights: please contact the hotel.")
+	ahead = cint(frappe.conf.get("kamra_public_max_days_ahead") or PUBLIC_MAX_DAYS_AHEAD)
+	if date_diff(check_in_date, nowdate()) > ahead:
+		frappe.throw("Bookings that far ahead aren't open yet: please contact the hotel.")
 
 
 def _room_type_filters(property: str, listing_slug: str | None = None,
@@ -64,7 +100,11 @@ def _property_payload(prop) -> dict:
 		"address_line": prop.address_line,
 		"city": prop.city, "state": prop.state,
 		"pincode": prop.pincode,
-		"country": prop.get("country") or "India",
+		"country": prop.get("country") or "",
+		# for the booking page's schema.org markup (prices and address)
+		"currency": prop.get("currency") or "",
+		"country_code": ((frappe.db.get_value("Country", prop.get("country"), "code")
+		                  if prop.get("country") else "") or "").upper(),
 		"phone": prop.phone, "email": prop.email,
 		"website": prop.website,
 		"google_reviews_url": prop.get("google_reviews_url"),
@@ -245,9 +285,8 @@ def _public_locale(property: str) -> dict:
 	prop = frappe.get_cached_doc("Property", property)
 	pack = pack_for(property)
 	loc = pack.locale(prop)
-	# "" is a valid symbol (generic pack shows bare numbers) - only the
-	# missing key falls back to the rupee
-	return {"currency_symbol": loc.get("currency_symbol", "₹"),
+	# "" is a valid symbol (generic pack shows bare numbers)
+	return {"currency_symbol": loc.get("currency_symbol", ""),
 	        "locale": loc.get("locale") or "en-IN",
 	        **privacy_terms(pack)}
 
@@ -312,10 +351,8 @@ def search_stay(property: str, check_in_date: str, check_out_date: str,
 	from kamra.pricing import quote
 	from kamra.siu.availability import has_active_sius, sellable_count
 
-	if date_diff(check_out_date, check_in_date) < 1:
-		frappe.throw("Check-out must be after check-in.")
-	if date_diff(check_out_date, check_in_date) > 30:
-		frappe.throw("Stays longer than 30 nights: please contact the hotel.")
+	_assert_publicly_bookable(frappe.get_cached_doc("Property", property),
+	                          check_in_date, check_out_date)
 
 	results = []
 	for rt in frappe.get_all(
@@ -646,15 +683,16 @@ def _advance_terms(prop, total: float) -> tuple[float, str]:
 	"""What the guest pays online now, and a human label - computed from the
 	property's CURRENT booking-payment policy. Snapshotted onto the booking so
 	a later policy change never re-bills an existing guest."""
+	from kamra.localization import format_money
 	mode = prop.get("booking_payment_mode") or "Pay at hotel"
 	total = float(total or 0)
 	if mode == "Advance percent":
 		pct = float(prop.get("advance_percent") or 0)
 		due = round(total * pct / 100, 2)
-		return due, f"{pct:g}% advance (₹{due:,.0f}) now, rest at the hotel"
+		return due, f"{pct:g}% advance ({format_money(prop.name, due, 0)}) now, rest at the hotel"
 	if mode == "Registration fee":
 		due = min(float(prop.get("registration_fee") or 0), total)
-		return due, f"₹{due:,.0f} registration fee now, rest at the hotel"
+		return due, f"{format_money(prop.name, due, 0)} registration fee now, rest at the hotel"
 	if mode == "Full online":
 		return total, "Full amount paid online"
 	return 0.0, "Pay at the hotel"
@@ -677,9 +715,15 @@ def book(property: str, room_type: str, check_in_date: str,
 	"""
 	if not guest_name.strip() or not phone.strip():
 		frappe.throw("Name and phone are required.")
+	email = (email or "").strip()
+	if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+		frappe.throw("A valid email is required - we send your booking code there.")
 
 	prop = frappe.get_cached_doc("Property", property)
-
+	_assert_publicly_bookable(prop, check_in_date, check_out_date, room_type)
+	# a blacklisted phone is refused without saying who or why
+	if frappe.db.exists("Guest", {"phone": phone.strip(), "blacklisted": 1}):
+		frappe.throw("We can't take this booking online. Please contact the hotel.")
 	# a guest may only add experiences the hotel actually publishes for this
 	# property - never a private, disabled or another property's experience,
 	# and always at the hotel's own price (qty is all the guest controls)
@@ -722,6 +766,10 @@ def book(property: str, room_type: str, check_in_date: str,
 		status, hold_expires_on = resolve_instant_status(
 			advance_due=advance_due, hold_minutes=hold_minutes,
 		)
+		if advance_due <= 0:
+			# nothing to pay online: held until the emailed code confirms it
+			status = "Held"
+			hold_expires_on = add_to_date(now_datetime(), minutes=VERIFY_MINUTES)
 
 	frappe.set_user("agent@kamra.local")  # governed writer for guest bookings  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
 	try:
@@ -732,6 +780,7 @@ def book(property: str, room_type: str, check_in_date: str,
 			check_out_date=check_out_date,
 			guest_name=guest_name,
 			phone=phone,
+			new_guest=1,
 			adults=int(adults),
 			children=int(children),
 			meal_plan=meal_plan or None,
@@ -755,26 +804,33 @@ def book(property: str, room_type: str, check_in_date: str,
 		}
 		if special_requests:
 			updates["special_requests"] = special_requests
-		# Instant + pay-at-hotel: if pre-insert peek overestimated advance,
-		# promote Pending Payment → Confirmed.
-		if (
+		# Instant with nothing to pay online: the room is Held until the guest
+		# proves the email is theirs. (With an advance due, paying confirms.)
+		verify = (
 			mode == "Instant"
 			and not result.get("idempotent_replay")
-			and result.get("status") == "Pending Payment"
-			and advance_due <= 0
-		):
-			frappe.flags.kamra_status_transition = True
-			try:
-				updates["status"] = "Confirmed"
-				updates["hold_expires_on"] = None
-			finally:
-				frappe.flags.kamra_status_transition = False
+			and result.get("status") == "Held"
+		)
+		if verify and advance_due > 0:
+			# the saved total (voucher, engine) turned out to need an advance
+			updates["status"] = "Pending Payment"
+			updates["hold_expires_on"] = add_to_date(now_datetime(), minutes=hold_minutes)
+			verify = False
 		frappe.db.set_value("Reservation", result["reservation"], updates)
-		if email:
-			frappe.db.set_value("Guest", result["guest"], "email", email)
+		# the guest profile is always a new one here, so this never rewrites
+		# someone else's contact details
+		frappe.db.set_value("Guest", result["guest"], "email", email)
 		frappe.db.commit()  # nosemgrep: frappe-manual-commit -- persists the completed operation before returning to an external/public caller; reviewed as intentional
 	finally:
 		frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
+
+	code_sent = _send_booking_code(result["reservation"], email, prop) if verify else False
+	if verify and not code_sent:
+		# no code reached the guest: keep the room for the hotel's own hold
+		# window so the desk can call and confirm it
+		frappe.db.set_value("Reservation", result["reservation"], "hold_expires_on",
+		                    add_to_date(now_datetime(), minutes=hold_minutes))
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit -- public caller; persist before returning
 
 	final_status = frappe.db.get_value(
 		"Reservation", result["reservation"], "status")
@@ -785,6 +841,11 @@ def book(property: str, room_type: str, check_in_date: str,
 		"payment_policy": policy,
 		"pay_at_hotel": advance_due <= 0,
 		"status": final_status,
+		# verify: show the code step; code_sent False means email failed and
+		# the hotel confirms instead
+		"verify": bool(verify),
+		"code_sent": bool(code_sent),
+		"verify_minutes": VERIFY_MINUTES,
 		"idempotent_replay": int(result.get("idempotent_replay") or 0),
 		"cleaning_fee": float(
 			frappe.db.get_value("Property", property, "cleaning_fee") or 0
@@ -793,6 +854,89 @@ def book(property: str, room_type: str, check_in_date: str,
 			frappe.db.get_value("Property", property, "security_deposit_amount") or 0
 		),
 	}
+
+
+def _code_key(reservation: str) -> str:
+	return f"kamra:booking_code:{reservation}"
+
+
+def _hash_code(reservation: str, code: str) -> str:
+	return hashlib.sha256(f"{reservation}:{code}".encode()).hexdigest()
+
+
+def _send_booking_code(reservation: str, email: str, prop) -> bool:
+	"""Email a 6-digit code that confirms a held website booking."""
+	code = f"{secrets.randbelow(1_000_000):06d}"
+	frappe.cache.set_value(
+		_code_key(reservation),
+		{"hash": _hash_code(reservation, code), "tries": 0, "email": email},
+		expires_in_sec=VERIFY_MINUTES * 60,
+	)
+	name = escape_html(prop.property_name or "")
+	try:
+		frappe.sendmail(
+			recipients=[email],
+			subject=f"{code} is your booking code for {prop.property_name}",
+			message=(
+				f"<p>Your booking <b>{escape_html(reservation)}</b> at {name} is held "
+				f"for {VERIFY_MINUTES} minutes.</p>"
+				f"<p>Enter this code on the booking page to confirm it:</p>"
+				f"<p style='font-size:24px;font-weight:600;letter-spacing:4px'>{code}</p>"
+				"<p>If you didn't make this booking, ignore this email and the "
+				"room is released automatically.</p>"
+			),
+			now=True,
+		)
+		return True
+	except Exception:
+		frappe.log_error(title=f"Booking code email failed for {reservation}")
+		return False
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=20, seconds=3600)
+def confirm_booking(reservation: str, code: str):
+	"""Confirm a held website booking with the code emailed to the guest."""
+	key = _code_key(reservation)
+	entry = frappe.cache.get_value(key)
+	status = frappe.db.get_value("Reservation", reservation, "status")
+	if not entry or status != "Held":
+		frappe.throw("This booking code has expired. Please book again.")
+	if entry["tries"] >= VERIFY_MAX_TRIES:
+		frappe.cache.delete_value(key)
+		frappe.throw("Too many wrong codes. Please book again.")
+	if not hmac.compare_digest(entry["hash"], _hash_code(reservation, (code or "").strip())):
+		entry["tries"] += 1
+		frappe.cache.set_value(key, entry, expires_in_sec=VERIFY_MINUTES * 60)
+		frappe.throw("That code isn't right. Check the email and try again.")
+	frappe.cache.delete_value(key)
+
+	frappe.set_user("agent@kamra.local")  # nosemgrep: frappe-setuser -- same governed writer as book(); the code proved the guest
+	try:
+		res = frappe.get_doc("Reservation", reservation)
+		frappe.flags.kamra_status_transition = True
+		try:
+			res.status = "Confirmed"
+			res.hold_expires_on = None
+			res.save(ignore_permissions=True)
+		finally:
+			frappe.flags.kamra_status_transition = False
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit -- public caller; persist before returning
+	finally:
+		frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- controlled user context switch
+	return {"reservation": reservation, "status": "Confirmed"}
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=5, seconds=3600)
+def resend_booking_code(reservation: str):
+	"""Send a fresh code to the email the booking was made with."""
+	entry = frappe.cache.get_value(_code_key(reservation))
+	if not entry or frappe.db.get_value("Reservation", reservation, "status") != "Held":
+		frappe.throw("This booking code has expired. Please book again.")
+	prop = frappe.get_cached_doc(
+		"Property", frappe.db.get_value("Reservation", reservation, "property"))
+	return {"code_sent": _send_booking_code(reservation, entry["email"], prop)}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -814,8 +958,9 @@ def check_voucher(property: str, code: str, nights: int = 1):
 		v = validate_voucher(property, code, int(nights or 1))
 	except Exception as e:
 		return {"ok": False, "message": str(e)}
+	from kamra.localization import format_money
 	label = (f"{v.value:g}% off" if v.discount_type == "Percent"
-	         else f"₹{v.value:,.0f} off")
+	         else f"{format_money(property, v.value, 0)} off")
 	return {"ok": True, "message": f"'{v.voucher_code}' applied - {label}.",
 	        "discount_type": v.discount_type, "value": float(v.value)}
 
@@ -880,6 +1025,9 @@ def hosting_enquiry(full_name: str, email: str, phone: str = "",
 	Leads are System Manager–only and purged after
 	``hosting_enquiry_retention_months`` (default 24) unless status is Won.
 	"""
+	# GARP Hotel: this is the vendor's own sales form, mailed to kamrapms.com.
+	# A tenant's hotel site has no business taking anonymous leads for Kamra.
+	frappe.throw("Not available.", frappe.PermissionError)
 	if not (full_name or "").strip() or not (email or "").strip():
 		frappe.throw("Name and email are required.")
 	doc = frappe.get_doc({

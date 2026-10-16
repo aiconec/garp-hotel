@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Plus, Minus, Trash2, Send, UtensilsCrossed, Search,
-  Maximize2, Minimize2, Wallet, Printer, Receipt, XCircle, Ban,
+  Maximize2, Minimize2, Wallet, Printer, ReceiptText, XCircle, Ban,
   Scissors, Users, PauseCircle, Tag, Gift, Clock, Menu, LogOut, Focus,
   Keyboard, LayoutGrid, BedDouble,
 } from "lucide-react"
@@ -1266,7 +1266,7 @@ export default function POS() {
             <div className="grid grid-cols-3 gap-1.5">
               <Button variant="outline" className="h-11 flex-col gap-0.5 !px-1 text-[11px] font-semibold leading-none"
                 disabled={busy || !selected} onClick={printBill}>
-                <Receipt className="size-4" />{t("Print bill")}
+                <ReceiptText className="size-4" />{t("Print bill")}
               </Button>
               <Button variant="outline" className="h-11 flex-col gap-0.5 !px-1 text-[11px] font-semibold leading-none"
                 disabled={busy || !selected || !detail || detail.items.filter((i) => !i.voided).length < 2 || detail.status === "Delivered"}

@@ -9,6 +9,9 @@ from frappe.model.document import Document
 class Folio(Document):
 	def validate(self):
 		self.guard_closed()
+		# totals always follow the lines, whoever saved the folio
+		from kamra.folio import _recalculate
+		_recalculate(self)
 
 	def guard_closed(self):
 		"""Once the GST invoice number is assigned the bill is frozen:

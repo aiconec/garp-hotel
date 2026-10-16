@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import {
-  UtensilsCrossed, Receipt, Users, Gift, Ban, ChefHat, Clock,
+  UtensilsCrossed, ReceiptText, Users, Gift, Ban, ChefHat, Clock,
   Wallet, TrendingUp,
 } from "lucide-react"
 import { Link } from "react-router-dom"
@@ -162,10 +162,10 @@ export default function PosDashboard() {
       {data && (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
             <Kpi icon={Wallet} label="Gross sales" value={`${cur()}${inr(data.gross_sales)}`}
               sub={`${data.bills} bill${data.bills === 1 ? "" : "s"} settled`} />
-            <Kpi icon={Receipt} label="Avg bill" value={`${cur()}${inr(data.avg_bill)}`} />
+            <Kpi icon={ReceiptText} label="Avg bill" value={`${cur()}${inr(data.avg_bill)}`} />
             <Kpi icon={Users} label="Covers" value={inr(data.covers)} />
             <Kpi icon={Clock} label="Open bills" value={String(data.open_bills.length)}
               sub={`${cur()}${inr(data.open_bills.reduce((s, b) => s + Number(b.order_total || 0), 0))} unsettled`} />

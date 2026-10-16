@@ -394,7 +394,8 @@
    "fieldtype": "Data",
    "hidden": 1,
    "label": "Pre-checkin Token",
-   "no_copy": 1
+   "no_copy": 1,
+   "permlevel": 1
   },
   {
    "default": "Not Started",
@@ -415,7 +416,8 @@
    "fieldtype": "Long Text",
    "label": "Pre-check-in Signature",
    "read_only": 1,
-   "description": "Guest e-signature (data URL) from self check-in"
+   "description": "Guest e-signature (data URL) from self check-in",
+   "permlevel": 1
   },
   {
    "fieldname": "precheckin_consent",
@@ -429,7 +431,8 @@
    "label": "ID Document",
    "read_only": 1,
    "no_copy": 1,
-   "description": "The guest's ID scan for THIS stay. Always private: it is served only to staff who can read this booking, never over a public /files/ URL. Attached to the reservation, not the guest profile, so a repeat guest's other live stay keeps its own copy."
+   "description": "The guest's ID scan for THIS stay. Always private: it is served only to staff who can read this booking, never over a public /files/ URL. Attached to the reservation, not the guest profile, so a repeat guest's other live stay keeps its own copy.",
+   "permlevel": 1
   },
   {
    "fieldname": "id_document_source",
@@ -533,7 +536,8 @@
    "fieldname": "occupants",
    "fieldtype": "Table",
    "label": "Occupants",
-   "options": "Stay Occupant"
+   "options": "Stay Occupant",
+   "permlevel": 1
   },
   {
    "description": "Extras chosen at booking \u2014 posted to the guest folio when it opens.",
@@ -733,7 +737,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-01 18:00:00.000000",
+ "modified": "2026-10-16 16:26:57.000000",
  "modified_by": "Administrator",
  "module": "Kamra",
  "name": "Reservation",
@@ -808,6 +812,30 @@
    "read": 1,
    "report": 1,
    "role": "Housekeeping Supervisor"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Hotel Admin"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Front Desk"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Kamra Agent"
   }
  ],
  "row_format": "Dynamic",

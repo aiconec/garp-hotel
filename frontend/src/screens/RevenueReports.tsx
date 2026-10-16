@@ -129,67 +129,69 @@ function BudgetVsActual() {
           </div>
         )}
         {data && (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
-                <th className="py-2 pr-3">Metric</th>
-                <th className="py-2 pr-3 text-right">Actual (MTD)</th>
-                <th className="py-2 pr-3 text-right">Target</th>
-                <th className="py-2 pr-3 text-right">Variance</th>
-                <th className="py-2 text-right">Attainment</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {data.rows.map((r) => (
-                <tr key={r.key}>
-                  <td className="py-2.5 pr-3 font-medium">{r.metric}</td>
-                  <td className="py-2.5 pr-3 text-right tabular-nums">
-                    {fmt(r.key, r.actual)}
-                  </td>
-                  <td className="py-2.5 pr-3 text-right tabular-nums">
-                    {edit ? (
-                      <input
-                        type="number"
-                        className="w-24 rounded-lg border border-zinc-300 px-2 py-1 text-right text-sm"
-                        value={draft[r.key] ?? ""}
-                        onChange={(e) =>
-                          setDraft((d) => ({ ...d, [r.key]: e.target.value }))
-                        }
-                      />
-                    ) : r.target ? (
-                      fmt(r.key, r.target)
-                    ) : (
-                      <span className="text-zinc-300">-</span>
-                    )}
-                  </td>
-                  <td
-                    className={
-                      "py-2.5 pr-3 text-right tabular-nums " +
-                      (r.variance >= 0 ? "text-emerald-600" : "text-rose-600")
-                    }
-                  >
-                    {r.target
-                      ? (r.variance >= 0 ? "+" : "") + fmt(r.key, r.variance)
-                      : "-"}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    {r.attainment !== null ? (
-                      <span
-                        className={
-                          "font-semibold tabular-nums " +
-                          attainTone(r.attainment)
-                        }
-                      >
-                        {r.attainment}%
-                      </span>
-                    ) : (
-                      <span className="text-zinc-300">-</span>
-                    )}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  <th className="py-2 pr-3">Metric</th>
+                  <th className="py-2 pr-3 text-right">Actual (MTD)</th>
+                  <th className="py-2 pr-3 text-right">Target</th>
+                  <th className="py-2 pr-3 text-right">Variance</th>
+                  <th className="py-2 text-right">Attainment</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {data.rows.map((r) => (
+                  <tr key={r.key}>
+                    <td className="py-2.5 pr-3 font-medium">{r.metric}</td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums">
+                      {fmt(r.key, r.actual)}
+                    </td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums">
+                      {edit ? (
+                        <input
+                          type="number"
+                          className="w-24 rounded-lg border border-zinc-300 px-2 py-1 text-right text-sm"
+                          value={draft[r.key] ?? ""}
+                          onChange={(e) =>
+                            setDraft((d) => ({ ...d, [r.key]: e.target.value }))
+                          }
+                        />
+                      ) : r.target ? (
+                        fmt(r.key, r.target)
+                      ) : (
+                        <span className="text-zinc-300">-</span>
+                      )}
+                    </td>
+                    <td
+                      className={
+                        "py-2.5 pr-3 text-right tabular-nums " +
+                        (r.variance >= 0 ? "text-emerald-600" : "text-rose-600")
+                      }
+                    >
+                      {r.target
+                        ? (r.variance >= 0 ? "+" : "") + fmt(r.key, r.variance)
+                        : "-"}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      {r.attainment !== null ? (
+                        <span
+                          className={
+                            "font-semibold tabular-nums " +
+                            attainTone(r.attainment)
+                          }
+                        >
+                          {r.attainment}%
+                        </span>
+                      ) : (
+                        <span className="text-zinc-300">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         {edit && (
           <div className="mt-3 flex justify-end">
@@ -282,47 +284,49 @@ function Contribution() {
           </p>
         )}
         {data && data.rows.length > 0 && (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
-                <th className="py-2 pr-3">{BY_OPTIONS.find((o) => o.key === by)?.label.replace("By ", "")}</th>
-                <th className="py-2 pr-3 text-right">Bookings</th>
-                <th className="py-2 pr-3 text-right">Room nights</th>
-                <th className="py-2 pr-3 text-right">Revenue {cur()}</th>
-                <th className="py-2 text-right">Share</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {data.rows.map((r) => (
-                <tr key={r.label}>
-                  <td className="py-2.5 pr-3 font-medium">{r.label}</td>
-                  <td className="py-2.5 pr-3 text-right tabular-nums">{r.bookings}</td>
-                  <td className="py-2.5 pr-3 text-right tabular-nums">{r.room_nights}</td>
-                  <td className="py-2.5 pr-3 text-right tabular-nums">{inr(r.revenue)}</td>
-                  <td className="py-2.5 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-100">
-                        <div
-                          className="h-full rounded-full bg-brand-500"
-                          style={{ width: `${r.share}%` }}
-                        />
-                      </div>
-                      <span className="w-10 text-right tabular-nums">{r.share}%</span>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  <th className="py-2 pr-3">{BY_OPTIONS.find((o) => o.key === by)?.label.replace("By ", "")}</th>
+                  <th className="py-2 pr-3 text-right">Bookings</th>
+                  <th className="py-2 pr-3 text-right">Room nights</th>
+                  <th className="py-2 pr-3 text-right">Revenue {cur()}</th>
+                  <th className="py-2 text-right">Share</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-zinc-200 font-semibold">
-                <td className="py-2 pr-3">Total</td>
-                <td />
-                <td />
-                <td className="py-2 pr-3 text-right tabular-nums">{inr(data.total)}</td>
-                <td className="py-2 text-right">100%</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {data.rows.map((r) => (
+                  <tr key={r.label}>
+                    <td className="py-2.5 pr-3 font-medium">{r.label}</td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums">{r.bookings}</td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums">{r.room_nights}</td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums">{inr(r.revenue)}</td>
+                    <td className="py-2.5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-100">
+                          <div
+                            className="h-full rounded-full bg-brand-500"
+                            style={{ width: `${r.share}%` }}
+                          />
+                        </div>
+                        <span className="w-10 text-right tabular-nums">{r.share}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-zinc-200 font-semibold">
+                  <td className="py-2 pr-3">Total</td>
+                  <td />
+                  <td />
+                  <td className="py-2 pr-3 text-right tabular-nums">{inr(data.total)}</td>
+                  <td className="py-2 text-right">100%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         )}
       </CardContent>
     </Card>

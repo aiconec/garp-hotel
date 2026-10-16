@@ -31,7 +31,7 @@ import {
   ListTodo,
   PackageSearch,
   Plus,
-  Receipt,
+  ReceiptText,
   ScrollText,
   Settings as SettingsIcon,
   Shirt,
@@ -223,7 +223,7 @@ export const APPS: AppDef[] = [
       { to: "/shifts", label: "Shift Handover", icon: Clock, group: "Cashier" },
       { to: "/cashier/fx", label: "Currency Desk", icon: Calculator, group: "Cashier" },
       // Billing
-      { to: "/billing", label: "Billing", icon: Receipt, group: "Billing" },
+      { to: "/billing", label: "Billing", icon: ReceiptText, group: "Billing" },
       { to: "/folio-history", label: "Folio History", icon: History, group: "Billing" },
       { to: "/laundry", label: "Laundry", icon: Shirt, group: "Billing" },
       // Books
@@ -245,7 +245,7 @@ export const APPS: AppDef[] = [
       { to: "/booking-settings/amenities", label: "Amenities", icon: ClipboardList },
       { to: "/booking-settings/photos", label: "Photos", icon: Camera },
       { to: "/booking-settings/policies", label: "Policies", icon: ScrollText },
-      { to: "/booking-settings/payments", label: "Payments", icon: Receipt },
+      { to: "/booking-settings/payments", label: "Payments", icon: ReceiptText },
       { to: "/booking-settings/faq", label: "FAQ", icon: HelpCircle },
       { to: "/booking-settings/seo", label: "SEO", icon: Search },
     ],

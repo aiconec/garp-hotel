@@ -85,12 +85,14 @@
    "fieldname": "id_type",
    "fieldtype": "Data",
    "label": "Id Type",
-   "description": "One of the ID types the property's country pack accepts"
+   "description": "One of the ID types the property's country pack accepts",
+   "permlevel": 1
   },
   {
    "fieldname": "id_number",
    "fieldtype": "Data",
-   "label": "Id Number"
+   "label": "Id Number",
+   "permlevel": 1
   },
   {
    "fieldname": "column_break_b",
@@ -134,7 +136,8 @@
    "fieldname": "id_file",
    "fieldtype": "Attach",
    "label": "ID Document",
-   "description": "Private photo/scan of the ID. Deleted at checkout when the property uses Verify & Discard retention."
+   "description": "Private photo/scan of the ID. Deleted at checkout when the property uses Verify & Discard retention.",
+   "permlevel": 1
   },
   {
    "fieldname": "address_proof_file",
@@ -153,7 +156,8 @@
   {
    "fieldname": "date_of_birth",
    "fieldtype": "Date",
-   "label": "Date of Birth"
+   "label": "Date of Birth",
+   "permlevel": 1
   },
   {
    "fieldname": "gender",
@@ -165,7 +169,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-28 18:00:00.000000",
+ "modified": "2026-10-16 16:26:57.000000",
  "modified_by": "Administrator",
  "module": "Kamra",
  "name": "Guest",
@@ -219,6 +223,30 @@
    "report": 1,
    "role": "Kamra Agent",
    "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Hotel Admin"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Front Desk"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Kamra Agent"
   }
  ],
  "row_format": "Dynamic",

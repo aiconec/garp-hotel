@@ -14,6 +14,7 @@ import { serverError } from "../lib/resource"
 import { accentVars } from "../lib/accents"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
+import { BookingCodeStep } from "../components/BookingCodeStep"
 import { Sheet } from "../components/ui/sheet"
 import { cur, moneyLocale, adoptUiLocale } from "../lib/money"
 import { formatPhoneDisplay, formatPhoneTel } from "../lib/phone"
@@ -231,7 +232,7 @@ export default function PublicListing() {
     meal_plan: "",
     special_requests: "",
   })
-  const [done, setDone] = useState<{ reservation: string; amount: number } | null>(null)
+  const [done, setDone] = useState<{ reservation: string; amount: number; verify?: boolean; codeSent?: boolean; minutes?: number; status?: string; advance?: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -321,7 +322,7 @@ export default function PublicListing() {
     setBusy(true)
     setError(null)
     try {
-      const res = await callGuest<{ reservation: string; amount_after_tax: number }>("kamra.public_api.book",
+      const res = await callGuest<{ reservation: string; amount_after_tax: number; verify?: boolean; code_sent?: boolean; verify_minutes?: number; status?: string; advance_due?: number }>("kamra.public_api.book",
         {
           property: resolved.property,
           room_type: booking,
@@ -332,7 +333,11 @@ export default function PublicListing() {
           ...form,
         },
       )
-      setDone({ reservation: res.reservation, amount: res.amount_after_tax })
+      setDone({
+        reservation: res.reservation, amount: res.amount_after_tax,
+        verify: res.verify, codeSent: res.code_sent, minutes: res.verify_minutes,
+        status: res.status, advance: res.advance_due,
+      })
     } catch (e) {
       setError(serverError(e))
     } finally {
@@ -755,7 +760,7 @@ export default function PublicListing() {
       {booking && (
         <Sheet
           wide
-          title={done ? "Booking confirmed" : "Complete your booking"}
+          title={done?.verify ? "Confirm your booking" : done?.status === "Pending Payment" ? "Booking held" : done ? "Booking confirmed" : "Complete your booking"}
           description={
             done
               ? undefined
@@ -766,7 +771,7 @@ export default function PublicListing() {
             setDone(null)
           }}
           footer={
-            done ? (
+            done?.verify ? undefined : done ? (
               <Button
                 className="w-full justify-center py-2.5"
                 onClick={() => {
@@ -779,7 +784,7 @@ export default function PublicListing() {
             ) : (
               <Button
                 className="w-full justify-center py-2.5 text-base"
-                disabled={busy || !form.guest_name || !form.phone}
+                disabled={busy || !form.guest_name || !form.phone || !form.email}
                 onClick={submitBooking}
               >
                 {busy ? "Booking…" : confirmLabel}
@@ -787,7 +792,24 @@ export default function PublicListing() {
             )
           }
         >
-          {done ? (
+          {done?.verify ? (
+            <BookingCodeStep
+              reservation={done.reservation}
+              email={form.email}
+              codeSent={!!done.codeSent}
+              minutes={done.minutes ?? 30}
+              inputCls={inputCls}
+              onConfirmed={() => setDone({ ...done, verify: false, status: "Confirmed" })}
+            />
+          ) : done?.status === "Pending Payment" ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900">
+              <p className="text-lg font-semibold">{done.reservation} is held for you</p>
+              <p className="mt-1 text-sm">
+                Total {cur()}{inr(done.amount)}. The hotel will send you a payment link for the
+                {" "}{cur()}{inr(done.advance ?? 0)} advance that confirms this booking.
+              </p>
+            </div>
+          ) : done ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-emerald-800">
               <p className="text-lg font-semibold">{done.reservation}</p>
               <p className="mt-1 text-sm">
@@ -815,13 +837,13 @@ export default function PublicListing() {
                 <input
                   className={inputCls}
                   value={form.phone}
-                  placeholder="+91 …"
+                  placeholder="+62 …"
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 />
               </label>
               <label className="block sm:col-span-2">
                 <span className="mb-1.5 block text-sm font-medium text-zinc-600">
-                  Email (optional)
+                  Email
                 </span>
                 <input
                   className={inputCls}

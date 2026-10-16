@@ -413,7 +413,7 @@ def connect_info(property: str) -> dict:
 		{"user": frappe.session.user, "property": property, "revoked": 0},
 	)
 	return {
-		"disabled": bool(frappe.conf.get("kamra_mcp_disabled")),
+		"disabled": bool(frappe.conf.get("kamra_mcp_disabled")) or not frappe.conf.get("kamra_mcp_enabled"),
 		"mcp_url": mcp_url,
 		"issuer": issuer_url(),
 		"claude_install_url": claude_install_url(prop_name, mcp_url),

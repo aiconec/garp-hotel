@@ -58,8 +58,10 @@ class MCPPageRenderer:
 
 
 def mcp_disabled() -> bool:
-	"""Site config `kamra_mcp_disabled` turns remote MCP off (demo sites)."""
-	return bool(frappe.conf.get("kamra_mcp_disabled"))
+	"""Remote MCP (and its OAuth endpoints) is off unless the site config
+	sets `kamra_mcp_enabled`; `kamra_mcp_disabled` still forces it off.
+	GARP Hotel ships it off: a tenant admin can't switch it on themselves."""
+	return bool(frappe.conf.get("kamra_mcp_disabled")) or not frappe.conf.get("kamra_mcp_enabled")
 
 
 def dispatch(path: str, request) -> Response:

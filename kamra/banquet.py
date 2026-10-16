@@ -690,10 +690,11 @@ def record_receipt(function: str, amount: float, mode: str = "Bank Transfer",
 		term.received_on = receipt_date or nowdate()
 		term.reference = reference or term.reference
 	doc.save()
+	from kamra.localization import format_money
 	from kamra.savings import log_action
 	log_action("banquet_receipt", "Venue Booking", doc.name, doc.property,
-	           rationale=f"{kind} ₹{float(amount):,.0f} ({mode}) for "
-	                     f"{doc.customer_name} - balance ₹{doc.balance_due:,.0f}")
+	           rationale=f"{kind} {format_money(doc.property, amount, 0)} ({mode}) for "
+	                     f"{doc.customer_name} - balance {format_money(doc.property, doc.balance_due, 0)}")
 	return {"ok": True, "received": doc.advance_received,
 	        "balance_due": doc.balance_due}
 
@@ -1346,11 +1347,12 @@ def generate_quote(function: str, valid_days: int = 15,
 	doc.quote_valid_till = add_days(nowdate(), int(valid_days or 15))
 	doc.save()
 	_snapshot(doc, note or _("Quote v{0} issued").format(doc.quote_version))
+	from kamra.localization import format_money
 	from kamra.savings import log_action
 	log_action("banquet_quote", "Venue Booking", doc.name, doc.property,
 	           minutes_saved=20,
 	           rationale=f"Quote v{doc.quote_version} for {doc.customer_name}: "
-	                     f"₹{doc.grand_total:,.0f} ({len(doc.items)} lines)")
+	                     f"{format_money(doc.property, doc.grand_total, 0)} ({len(doc.items)} lines)")
 	return banquet_document(function, "quote")
 
 
@@ -1396,11 +1398,12 @@ def generate_invoice(function: str):
 			f"BINV-{str(doc.event_date)[:4]}-.#####")
 		doc.invoice_date = nowdate()
 		doc.save()
+		from kamra.localization import format_money
 		from kamra.savings import log_action
 		log_action("banquet_invoice", "Venue Booking", doc.name, doc.property,
 		           minutes_saved=10,
 		           rationale=f"Invoice {doc.invoice_number} for "
-		                     f"{doc.customer_name}: ₹{doc.grand_total:,.0f}")
+		                     f"{doc.customer_name}: {format_money(doc.property, doc.grand_total, 0)}")
 	return banquet_document(function, "invoice")
 
 
@@ -1552,12 +1555,14 @@ def close_out(function: str, damage_amount: float = 0,
 		})
 	doc.status = "Completed"
 	doc.save()
+	from kamra.localization import format_money
 	from kamra.savings import log_action
 	log_action("banquet_close_out", "Venue Booking", doc.name, doc.property,
 	           minutes_saved=10,
 	           rationale=f"{doc.customer_name} closed out - "
 	                     f"{doc.billable_pax} actual pax, "
-	                     f"₹{damage:,.0f} damages, ₹{refund:,.0f} returned")
+	                     f"{format_money(doc.property, damage, 0)} damages, "
+	                     f"{format_money(doc.property, refund, 0)} returned")
 	return {"ok": True, "status": doc.status, "damage": damage,
 	        "refunded": refund, "deposit_held": doc.deposit_held,
 	        "balance_due": doc.balance_due, "grand_total": doc.grand_total}

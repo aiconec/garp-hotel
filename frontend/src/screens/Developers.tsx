@@ -193,17 +193,6 @@ export default function Developers() {
   -d '{"property": "${property}"}'`}
             </pre>
           </div>
-          <p className="text-xs text-zinc-400">
-            Full reference:{" "}
-            <a
-              href="https://github.com/Kamra-PMS/kamra-pms/blob/main/docs/ai-and-api.md"
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-brand-700 hover:underline"
-            >
-              docs/ai-and-api.md →
-            </a>
-          </p>
         </CardContent>
       </Card>
 
