@@ -8,6 +8,7 @@ import {
   Menu,
   Moon,
   Plus,
+  Scale,
   Search,
   Sun,
   X,
@@ -33,6 +34,7 @@ import {
   type PropertyRow,
 } from "./lib/api"
 import { asset } from "./lib/asset"
+import { LICENCES_URL } from "./lib/brand"
 import { useAuth } from "./lib/auth"
 import { subscribeRealtime } from "./lib/realtime"
 import { getTheme, setTheme } from "./lib/theme"
@@ -60,7 +62,7 @@ export interface ShellContext {
 // mirrors @require_roles on kamra.api.create_booking / walk_in (admins always pass)
 const BOOKING_ROLES = [
   "Front Desk",
-  "Kamra Agent",
+  "Hotel Agent",
   "Hotel Admin",
   "System Manager",
   "Administrator",
@@ -166,6 +168,15 @@ function UserMenu({ user, onSignOut }: { user: string; onSignOut: () => void }) 
           <div className="truncate px-2.5 py-2 text-xs text-zinc-500" title={user}>
             {user}
           </div>
+          <a
+            href={LICENCES_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+          >
+            <Scale className="size-4" aria-hidden />
+            {t("Licences")}
+          </a>
           <button
             onClick={onSignOut}
             className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100"

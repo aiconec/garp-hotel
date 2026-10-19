@@ -11,7 +11,7 @@ from kamra.authz import require_roles
 
 
 @frappe.whitelist()
-@require_roles("Finance", "Hotel Admin", "Kamra Agent")
+@require_roles("Finance", "Hotel Admin", "Hotel Agent")
 def export_invoices(property: str, from_date: str, to_date: str):
 	"""Every closed invoice in the window as accounting rows: one voucher per
 	invoice, taxable value, tax split (pack-shaped), party and identifiers."""

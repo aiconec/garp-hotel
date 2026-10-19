@@ -324,7 +324,7 @@ def _handle_inbound(value: dict) -> None:
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Hotel Admin", "Hotel Agent")
 def threads(property: str):
 	"""One row per guest number: who, the last message, when. The desk's
 	inbox - modeled on Frappe CRM's WhatsApp tab, but per hotel."""
@@ -355,7 +355,7 @@ def threads(property: str):
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Hotel Admin", "Hotel Agent")
 def thread(property: str, number: str):
 	"""Full conversation with one number, oldest first, plus whether the
 	24-hour session window is open (a guest message in the last day)."""
@@ -378,7 +378,7 @@ def thread(property: str, number: str):
 
 
 @frappe.whitelist(methods=["POST"])
-@require_roles("Front Desk", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Hotel Admin", "Hotel Agent")
 def reply(property: str, number: str, text: str):
 	"""Desk reply into the guest's session window."""
 	if not (text or "").strip():

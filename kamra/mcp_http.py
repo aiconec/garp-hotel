@@ -31,6 +31,7 @@ from kamra.mcp_tools import (
 	call_tool,
 	mcp_tool_list,
 )
+from kamra.site_conf import site_conf
 
 PROTOCOL_VERSIONS = ("2025-11-25", "2025-03-26", "2024-11-05")
 CORS_HEADERS = {
@@ -59,9 +60,9 @@ class MCPPageRenderer:
 
 def mcp_disabled() -> bool:
 	"""Remote MCP (and its OAuth endpoints) is off unless the site config
-	sets `kamra_mcp_enabled`; `kamra_mcp_disabled` still forces it off.
+	sets `hotel_mcp_enabled`; `hotel_mcp_disabled` still forces it off.
 	GARP Hotel ships it off: a tenant admin can't switch it on themselves."""
-	return bool(frappe.conf.get("kamra_mcp_disabled")) or not frappe.conf.get("kamra_mcp_enabled")
+	return bool(site_conf("mcp_disabled")) or not site_conf("mcp_enabled")
 
 
 def dispatch(path: str, request) -> Response:
@@ -167,7 +168,7 @@ def _unauthorized() -> Response:
 	resp = _json(
 		{
 			"error": "invalid_token",
-			"error_description": "Sign in with OAuth to use Kamra MCP.",
+			"error_description": "Sign in with OAuth to use BizConnect.id Hotel MCP.",
 		},
 		401,
 	)
@@ -207,7 +208,7 @@ def _dispatch_method(method: str, params: dict, grant) -> dict:
 		return {
 			"protocolVersion": version,
 			"capabilities": {"tools": {"listChanged": False}},
-			"serverInfo": {"name": "kamra", "version": str(TOOL_COUNT), "title": "Kamra PMS"},
+			"serverInfo": {"name": "bizconnect-hotel", "version": str(TOOL_COUNT), "title": "BizConnect.id Hotel"},
 			"instructions": INSTRUCTIONS,
 		}
 	if method in ("notifications/initialized", "notifications/cancelled"):

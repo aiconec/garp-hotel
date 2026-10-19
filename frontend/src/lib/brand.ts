@@ -6,10 +6,10 @@
 export const BRAND_NAME = "BizConnect.id Hotel"
 export const BRAND_AGENT = "BizConnect.id Hotel Agent"
 
-// AGPL-3.0 §5(d)/§13: the UI keeps a legal notice and a link to this
-// modified version's source.
-export const SOURCE_URL = "https://github.com/aiconec/garp-hotel"
-export const UPSTREAM_NAME = "Kamra PMS"
+// AGPL-3.0 §5(d)/§13: the account menu links the licences page, which carries
+// the copyright, the no-warranty notice and the offer of this modified
+// version's source. Like every GARP app, the UI never links the repo itself.
+export const LICENCES_URL = "https://garp.aiconec.com/docs/licences"
 
 export function rebrand(s: string): string {
   if (!s.includes("Kamra")) return s

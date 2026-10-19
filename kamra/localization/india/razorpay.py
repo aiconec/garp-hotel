@@ -13,10 +13,12 @@ import time
 import frappe
 from frappe.utils import get_url
 
+from kamra.site_conf import site_conf
+
 GATEWAY = "Razorpay"
 API = "https://api.razorpay.com/v1/payment_links"
 # Kamra's partner referral link: costs the hotel nothing, helps fund the
-# project. Site config kamra_razorpay_signup_url points it elsewhere.
+# project. Site config hotel_razorpay_signup_url points it elsewhere.
 SIGNUP_URL = "https://dashboard.razorpay.com/signup"
 
 
@@ -61,7 +63,7 @@ def info() -> dict:
 	return {
 		"gateway": GATEWAY,
 		"webhook_url": get_url("/api/method/kamra.payments.razorpay_webhook"),
-		"signup_url": frappe.conf.get("kamra_razorpay_signup_url") or SIGNUP_URL,
+		"signup_url": site_conf("razorpay_signup_url") or SIGNUP_URL,
 		"needs_webhook": True,
 	}
 

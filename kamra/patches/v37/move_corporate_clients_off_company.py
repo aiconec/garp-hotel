@@ -16,7 +16,7 @@ OLD = "Company"
 NEW = "Corporate Account"
 KAMRA_ONLY_COLUMN = "negotiated_rate_plan"
 KAMRA_ROLES = ("Front Desk", "Housekeeping", "Finance", "Revenue Manager",
-               "Hotel Admin", "Kamra Agent")
+               "Hotel Admin", "Hotel Agent")
 
 # (doctype, doctype column, name column) for rows that point at a document
 REFERENCES = (

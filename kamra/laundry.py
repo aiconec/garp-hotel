@@ -16,8 +16,8 @@ from frappe.utils import add_to_date, get_datetime, now_datetime
 
 from kamra.authz import require_roles
 
-LAUNDRY_ROLES = ("Housekeeping", "Front Desk", "Kamra Agent")
-RATE_ROLES = ("Front Desk", "Finance", "Kamra Agent")
+LAUNDRY_ROLES = ("Housekeeping", "Front Desk", "Hotel Agent")
+RATE_ROLES = ("Front Desk", "Finance", "Hotel Agent")
 SERVICES = ("Wash & Iron", "Dry Clean", "Iron Only")
 LAUNDRY_GST = 18.0  # services rate; resolved server-side on posting
 
@@ -406,7 +406,7 @@ def laundry_board(property: str):
 
 
 @frappe.whitelist()
-@require_roles("Finance", "Front Desk", "Hotel Admin", "Kamra Agent")
+@require_roles("Finance", "Front Desk", "Hotel Admin", "Hotel Agent")
 def laundry_revenue(property: str, days: int = 30):
 	"""Delivered-laundry revenue over the last N days, with a per-service
 	breakdown. Only billed guest orders count as revenue; House and

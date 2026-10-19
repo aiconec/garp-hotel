@@ -12,7 +12,7 @@ from frappe.utils import add_days, getdate, now_datetime, nowdate
 
 from kamra.authz import require_roles
 
-BANQUET_ROLES = ("Front Desk", "Revenue Manager", "Kamra Agent")
+BANQUET_ROLES = ("Front Desk", "Revenue Manager", "Hotel Agent")
 READ_ROLES = BANQUET_ROLES + ("Finance", "Housekeeping")
 
 # Department → Frappe role for confirm fan-out notifications.

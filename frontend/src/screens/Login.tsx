@@ -6,7 +6,7 @@ import { Button } from "../components/ui/button"
 import { getSiteInfo } from "../lib/siteInfo"
 import { LANGS, getLang, setLang, type Lang } from "../lib/dir"
 import { useT } from "../lib/i18n"
-import { BRAND_NAME, SOURCE_URL, UPSTREAM_NAME } from "../lib/brand"
+import { BRAND_NAME } from "../lib/brand"
 
 const inputCls =
   "w-full rounded border border-[#E2E8F0] bg-[#ffffff] px-3 py-2 text-sm " +
@@ -30,7 +30,6 @@ export default function Login(props: { onSuccess: () => void }) {
   const [busy, setBusy] = useState(false)
   // Demo accounts only exist on the seeded demo site; hide them elsewhere.
   const [demoMode, setDemoMode] = useState(false)
-  const [version, setVersion] = useState<string | null>(null)
   const [langState, setLangState] = useState<Lang>(lang || getLang())
 
   useEffect(() => {
@@ -40,7 +39,6 @@ export default function Login(props: { onSuccess: () => void }) {
   useEffect(() => {
     getSiteInfo().then((info) => {
       setDemoMode(Boolean(info.demo_mode))
-      setVersion(info.version ?? null)
     })
   }, [])
 
@@ -179,12 +177,6 @@ export default function Login(props: { onSuccess: () => void }) {
           </div>
         </div>
         )}
-        <p className="mt-6 text-center text-[11px] text-[#6f7a71]">
-          {BRAND_NAME}{version && ` v${version}`} · {t("Based on")} {UPSTREAM_NAME} ·{" "}
-          <a href={SOURCE_URL} className="underline underline-offset-2 hover:text-[#3f4941]">
-            {t("AGPL-3.0 source")}
-          </a>
-        </p>
       </div>
     </div>
   )

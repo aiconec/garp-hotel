@@ -20,7 +20,7 @@ import frappe
 
 # Every role Kamra ships. A tenant gets the ones its modules need.
 ROLES = ("Hotel Admin", "Front Desk", "Housekeeping", "Finance",
-         "Revenue Manager", "Kamra Agent")
+         "Revenue Manager", "Hotel Agent")
 
 # What a property must have before anyone can take a booking on it.
 MODULE_ROLES = {

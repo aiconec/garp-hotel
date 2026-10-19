@@ -21,6 +21,8 @@ import {
 } from "../components/ui/card"
 import { serverError } from "../lib/resource"
 import { moneyLocale } from "../lib/money"
+// older sites logged the assistant as "Kamra Agent"
+import { rebrand } from "../lib/brand"
 
 
 
@@ -230,7 +232,7 @@ export function ActivityTab({ property }: { property: string }) {
                     {r.agent_name ? (
                       <span className="inline-flex items-center gap-1">
                         <Bot className="size-3.5 text-brand-600" aria-hidden />
-                        <span className="font-medium">{r.agent_name}</span>
+                        <span className="font-medium">{rebrand(r.agent_name)}</span>
                       </span>
                     ) : (
                       <span className="font-medium">
@@ -272,7 +274,7 @@ export function ActivityTab({ property }: { property: string }) {
                               ["Logged", fmtWhen(detail.creation)],
                               ["Executed", detail.executed_at ? fmtWhen(detail.executed_at) : "-"],
                               ["Actor", detail.actor ?? "system"],
-                              ["Agent", detail.agent_name ?? "-"],
+                              ["Agent", detail.agent_name ? rebrand(detail.agent_name) : "-"],
                               ["Channel", detail.action_channel ?? "-"],
                               ["Autonomy", detail.autonomy ?? "-"],
                               [

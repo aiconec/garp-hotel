@@ -29,7 +29,7 @@
   {"role": "Hotel Admin", "read": 1, "create": 1},
   {"role": "Finance", "read": 1, "create": 1},
   {"role": "Front Desk", "read": 1, "create": 1},
-  {"role": "Kamra Agent", "read": 1, "create": 1}
+  {"role": "Hotel Agent", "read": 1, "create": 1}
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

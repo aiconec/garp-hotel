@@ -245,7 +245,7 @@ def require_roles(*roles, scope: dict | None = None):
 	whitelist decorator so the registered function is the guarded one:
 
 	    @frappe.whitelist()
-	    @require_roles("Front Desk", "Kamra Agent")
+	    @require_roles("Front Desk", "Hotel Agent")
 	    def check_in(...): ...
 
 	It also enforces property scope: a user restricted to some properties
@@ -285,7 +285,7 @@ def require_cashier_pin(property: str, pin=None):
 	"""The walk-up-to-an-unlocked-terminal guard: money actions re-confirm
 	WHO is acting with a personal PIN, even inside a valid session.
 
-	Skipped for agents (Kamra Agent role, the copilot's in-process tool calls,
+	Skipped for agents (Hotel Agent role, the copilot's in-process tool calls,
 	and gated replays) - their identity and accountability come from the
 	autonomy gate + action log, not a keypad. Off unless the property enables
 	require_cashier_pin.
@@ -298,7 +298,7 @@ def require_cashier_pin(property: str, pin=None):
 	if getattr(frappe.flags, "kamra_agent_call", False) or \
 	   getattr(frappe.flags, "kamra_gate_bypass", False):
 		return
-	if "Kamra Agent" in frappe.get_roles():
+	if "Hotel Agent" in frappe.get_roles():
 		return
 	user = frappe.session.user
 	if user == "Administrator":

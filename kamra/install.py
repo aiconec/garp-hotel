@@ -1,7 +1,7 @@
 import frappe
 
 AGENT_EMAIL = "agent@kamra.local"
-AGENT_ROLE = "Kamra Agent"
+AGENT_ROLE = "Hotel Agent"
 
 
 # business roles a hotel assigns to staff that no doctype perm creates
@@ -56,7 +56,7 @@ def _mirror_custom_perms(from_role: str, to_role: str):
 def ensure_agent_identity():
 	"""The governed writer for guest bookings, OTA webhooks and automations.
 
-	Only the Role and the User - never a DocPerm. Kamra Agent's grants ship
+	Only the Role and the User - never a DocPerm. Hotel Agent's grants ship
 	in the doctype JSON as standard perms. seed_rbac_v2.ensure_agent_user()
 	writes custom DocPerms, and in Frappe ANY custom perm on a doctype
 	replaces ALL its standard perms, so running that at install silently

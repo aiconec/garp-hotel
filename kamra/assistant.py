@@ -28,6 +28,7 @@ from kamra import llm_api
 from kamra.assistant_privacy import processor_disclosure, scrub_for_llm
 from kamra.authz import require_roles
 from kamra.llm_compat import DEFAULT_MODEL
+from kamra.site_conf import site_conf
 
 MAX_TOOL_ROUNDS = 6
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -41,7 +42,7 @@ RETRYABLE = ("PIN_REQUIRED", "PIN_NOT_SET", "PIN_MUST_RESET", "NO_OPEN_SESSION")
 # Hosts the hotel's key and guest data may be sent to. A Hotel Admin edits
 # base_url, so without a list the key would go to any address the server
 # can reach, the platform's private network included. Site config
-# `kamra_ai_hosts` adds more: a hostname (https) or an exact origin such as
+# `hotel_ai_hosts` adds more: a hostname (https) or an exact origin such as
 # "http://ollama.internal:11434" for a local model.
 AI_HOSTS = (
 	"api.anthropic.com",
@@ -456,9 +457,9 @@ TOOLS = {
 
 def ai_allowed() -> bool:
 	"""The in-app assistant runs only where GARP's site config sets
-	`kamra_ai_enabled`, whatever a Hotel Admin sets in Settings: the site
+	`hotel_ai_enabled`, whatever a Hotel Admin sets in Settings: the site
 	owner decides whether guest data may go to a model at all."""
-	return bool(frappe.conf.get("kamra_ai_enabled"))
+	return bool(site_conf("ai_enabled"))
 
 
 def _assert_ai_allowed():
@@ -480,7 +481,7 @@ def url_allowed(url: str | None) -> bool:
 	host = (parts.hostname or "").lower()
 	if parts.username or parts.password or not host or host != sent_to:
 		return False
-	extra = frappe.conf.get("kamra_ai_hosts") or []
+	extra = site_conf("ai_hosts") or []
 	if isinstance(extra, str):
 		extra = [h.strip() for h in extra.split(",")]
 	origin = f"{parts.scheme}://{host}" + (f":{parts.port}" if parts.port else "")
@@ -1130,7 +1131,7 @@ def help_ask(property: str, messages):
 # ---------------------------------------------------------------------------
 
 CONVO_ROLES = ("Front Desk", "Finance", "Revenue Manager", "Hotel Admin",
-               "Kamra Agent")
+               "Hotel Agent")
 
 
 def _own_convo(name):

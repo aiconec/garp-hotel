@@ -10,7 +10,7 @@ from kamra.scripts.bootstrap_schema import f
 from kamra.scripts.bootstrap_v2 import _dt
 from kamra.scripts.fix_perms_fields import _grant
 
-ROLES_RW = ("System Manager", "Hotel Admin", "Front Desk", "Kamra Agent")
+ROLES_RW = ("System Manager", "Hotel Admin", "Front Desk", "Hotel Agent")
 
 
 def execute():
@@ -89,7 +89,7 @@ def execute():
 
 	for doctype in ("POS Outlet", "Menu Item", "POS Order", "Experience"):
 		for role in ROLES_RW:
-			write = 0 if (role == "Kamra Agent" and doctype != "POS Order") else 1
+			write = 0 if (role == "Hotel Agent" and doctype != "POS Order") else 1
 			_grant(doctype, role, 1, write, write,
 			       delete=1 if role in ("System Manager", "Hotel Admin") else 0)
 		_grant(doctype, "Revenue Manager", 1, 1, 1)

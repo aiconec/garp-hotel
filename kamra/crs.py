@@ -31,7 +31,7 @@ def assert_property_access(property: str):
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Revenue Manager", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Revenue Manager", "Hotel Admin", "Hotel Agent")
 def crs_search(check_in_date: str, check_out_date: str,
                adults: int = 2, children: int = 0):
 	"""Find a room across the chain: for every property the user can access,

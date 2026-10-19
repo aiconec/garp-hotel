@@ -146,7 +146,7 @@ def _finance_slice(property: str, date: str):
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Revenue Manager", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Revenue Manager", "Hotel Admin", "Hotel Agent")
 def property_dashboard(property: str, date: str | None = None,
                        from_date: str | None = None, to_date: str | None = None):
 	"""Everything one hotel's dashboard needs, by department. `period`
@@ -232,7 +232,7 @@ def _property_summary(property: str, start: str, end: str):
 
 
 @frappe.whitelist()
-@require_roles("Finance", "Revenue Manager", "Hotel Admin", "Kamra Agent")
+@require_roles("Finance", "Revenue Manager", "Hotel Admin", "Hotel Agent")
 def portfolio_dashboard(date: str | None = None,
                         from_date: str | None = None, to_date: str | None = None):
 	"""The chain's central view: headline metrics rolled up across every

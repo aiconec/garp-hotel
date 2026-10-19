@@ -23,7 +23,7 @@ def _agent_bypass() -> bool:
 	if getattr(frappe.flags, "kamra_agent_call", False) or \
 	   getattr(frappe.flags, "kamra_gate_bypass", False):
 		return True
-	if "Kamra Agent" in frappe.get_roles():
+	if "Hotel Agent" in frappe.get_roles():
 		return True
 	if frappe.session.user == "Administrator":
 		return True
@@ -213,7 +213,7 @@ def session_as_dict(name: str) -> dict[str, Any]:
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Agent")
 def open_session(property: str, opening_float: float = 0,
                  terminal: str | None = None):
 	"""Open the caller's till for the current business date."""
@@ -245,7 +245,7 @@ def open_session(property: str, opening_float: float = 0,
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Agent")
 def current_session(property: str):
 	"""Caller's open session, or null."""
 	user = frappe.session.user
@@ -271,7 +271,7 @@ def current_session(property: str):
 
 
 @frappe.whitelist(methods=["POST"])
-@require_roles("Front Desk", "Finance", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Agent")
 def close_session(session: str, counted_cash: float,
                   notes: str | None = None, pin: str | None = None):
 	"""Count the drawer and close the till."""
@@ -343,7 +343,7 @@ def _sync_shift_handover(sess) -> None:
 
 
 @frappe.whitelist(methods=["POST"])
-@require_roles("Front Desk", "Finance", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Agent")
 def post_paid_out(property: str, amount: float, reason: str,
                   payee: str | None = None, pin: str | None = None):
 	"""Cash leaving the drawer (vendor / guest paid-out)."""
@@ -364,7 +364,7 @@ def post_paid_out(property: str, amount: float, reason: str,
 
 
 @frappe.whitelist(methods=["POST"])
-@require_roles("Front Desk", "Finance", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Agent")
 def cash_drop(property: str, amount: float, location: str | None = None,
               pin: str | None = None):
 	"""Move cash from the till to a drop safe / general cashier."""
@@ -383,7 +383,7 @@ def cash_drop(property: str, amount: float, location: str | None = None,
 
 
 @frappe.whitelist(methods=["POST"])
-@require_roles("Front Desk", "Finance", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Agent")
 def post_petty_cash(property: str, amount: float, payee: str, category: str,
                     reason: str, pin: str | None = None):
 	if float(amount) <= 0:
@@ -417,7 +417,7 @@ def post_petty_cash(property: str, amount: float, payee: str, category: str,
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Admin", "Hotel Agent")
 def list_sessions(property: str, business_date: str | None = None,
                   status: str | None = None):
 	filters: dict[str, Any] = {"property": property}
@@ -440,13 +440,13 @@ def list_sessions(property: str, business_date: str | None = None,
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Admin", "Hotel Agent")
 def session_report(session: str):
 	return session_as_dict(session)
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Admin", "Hotel Agent")
 def cash_summary_v2(property: str, date: str | None = None):
 	"""Unified FO + POS cash for a business date (replaces folio-only summary)."""
 	date = date or get_business_date(property)
@@ -497,7 +497,7 @@ def cash_summary_v2(property: str, date: str | None = None):
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Hotel Admin", "Hotel Agent")
 def shift_report(property: str, business_date: str | None = None):
 	"""Per-cashier totals for a business date."""
 	date = business_date or get_business_date(property)

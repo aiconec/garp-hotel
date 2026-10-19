@@ -15,10 +15,11 @@ from frappe.rate_limiter import rate_limit
 from frappe.utils import add_to_date, cint, date_diff, escape_html, now_datetime, nowdate
 
 from kamra.booking_slugs import resolve_public_slug, slugify
+from kamra.site_conf import site_conf
 
 # Anonymous bookings: how long a stay may be and how far ahead it may start.
-# A hotel can change either in site_config (kamra_public_max_nights,
-# kamra_public_max_days_ahead).
+# A hotel can change either in site_config (hotel_public_max_nights,
+# hotel_public_max_days_ahead).
 PUBLIC_MAX_NIGHTS = 30
 PUBLIC_MAX_DAYS_AHEAD = 400
 # A website booking with nothing to pay online holds its room this long while
@@ -40,12 +41,12 @@ def _assert_publicly_bookable(prop, check_in_date: str, check_out_date: str,
 		if not rt or rt.property != prop.name or cint(rt.disabled):
 			frappe.throw("This room type can't be booked online.")
 	nights = date_diff(check_out_date, check_in_date)
-	max_nights = cint(frappe.conf.get("kamra_public_max_nights") or PUBLIC_MAX_NIGHTS)
+	max_nights = cint(site_conf("public_max_nights") or PUBLIC_MAX_NIGHTS)
 	if nights < 1:
 		frappe.throw("Check-out must be after check-in.")
 	if nights > max_nights:
 		frappe.throw(f"Stays longer than {max_nights} nights: please contact the hotel.")
-	ahead = cint(frappe.conf.get("kamra_public_max_days_ahead") or PUBLIC_MAX_DAYS_AHEAD)
+	ahead = cint(site_conf("public_max_days_ahead") or PUBLIC_MAX_DAYS_AHEAD)
 	if date_diff(check_in_date, nowdate()) > ahead:
 		frappe.throw("Bookings that far ahead aren't open yet: please contact the hotel.")
 

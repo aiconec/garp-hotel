@@ -714,7 +714,7 @@ function presetFor(presets: AiPreset[], baseUrl: string) {
   )
 }
 
-/** BizConnect.id switches the assistant on per site (site config kamra_ai_enabled);
+/** BizConnect.id switches the assistant on per site (site config hotel_ai_enabled);
  *  where it's off, the key form would only mislead an admin. */
 function AiAssistantSection(props: { property: string; doc: Doc; onSaved: () => void }) {
   const { t } = useT()

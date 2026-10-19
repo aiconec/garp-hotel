@@ -9,7 +9,7 @@ from kamra.assistant_privacy import scrub_for_llm
 
 class TestProviderHosts(unittest.TestCase):
 	def allowed(self, url, hosts=None):
-		conf = frappe._dict({"kamra_ai_hosts": hosts} if hosts else {})
+		conf = frappe._dict({"hotel_ai_hosts": hosts} if hosts else {})
 		with mock.patch.object(assistant.frappe, "conf", conf):
 			return assistant.url_allowed(url)
 
