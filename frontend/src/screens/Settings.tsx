@@ -696,8 +696,22 @@ type AiPreset = {
   label: string
   base_url: string
   model: string
+  models?: string[]
   hint: string
   processor_note?: string
+}
+
+const DEFAULT_AI_BASE = "https://api.openai.com/v1"
+const DEFAULT_AI_MODEL = "gpt-6.1-sol"
+const trimSlash = (url: string) => url.trim().replace(/\/+$/, "")
+
+/** The preset a saved address belongs to, so the form opens on it. */
+function presetFor(presets: AiPreset[], baseUrl: string) {
+  const base = trimSlash(baseUrl)
+  return (
+    presets.find((p) => p.base_url && trimSlash(p.base_url) === base)?.id ??
+    (/\.openai\.azure\.com/i.test(base) ? "azure" : "custom")
+  )
 }
 
 /** BizConnect.id switches the assistant on per site (site config kamra_ai_enabled);
@@ -738,8 +752,8 @@ function AiAssistantCard({
   const [presets, setPresets] = useState<AiPreset[]>([])
   const [provider, setProvider] = useState("openai")
   const [enabled, setEnabled] = useState(Boolean(Number(doc.enabled ?? 0)))
-  const [baseUrl, setBaseUrl] = useState(String(doc.base_url ?? "https://api.openai.com/v1"))
-  const [model, setModel] = useState(String(doc.model ?? "gpt-4o-mini"))
+  const [baseUrl, setBaseUrl] = useState(String(doc.base_url ?? DEFAULT_AI_BASE))
+  const [model, setModel] = useState(String(doc.model ?? DEFAULT_AI_MODEL))
   const [apiKey, setApiKey] = useState("")
   const [extra, setExtra] = useState(String(doc.extra_instructions ?? ""))
   const [redactContact, setRedactContact] = useState(
@@ -750,7 +764,7 @@ function AiAssistantCard({
   const [busy, setBusy] = useState(false)
   const [testing, setTesting] = useState(false)
   const [state, setState] = useState<"idle" | "saved" | string>("idle")
-  const [testMsg, setTestMsg] = useState<string | null>(null)
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
     call<{ presets: AiPreset[] }>("kamra.assistant.provider_presets")
@@ -760,8 +774,8 @@ function AiAssistantCard({
           {
             id: "openai",
             label: "OpenAI",
-            base_url: "https://api.openai.com/v1",
-            model: "gpt-4o-mini",
+            base_url: DEFAULT_AI_BASE,
+            model: DEFAULT_AI_MODEL,
             hint: "Paste an sk-… key",
           },
         ]),
@@ -769,9 +783,13 @@ function AiAssistantCard({
   }, [])
 
   useEffect(() => {
+    if (presets.length) setProvider(presetFor(presets, String(doc.base_url ?? DEFAULT_AI_BASE)))
+  }, [presets, doc])
+
+  useEffect(() => {
     setEnabled(Boolean(Number(doc.enabled ?? 0)))
-    setBaseUrl(String(doc.base_url ?? "https://api.openai.com/v1"))
-    setModel(String(doc.model ?? "gpt-4o-mini"))
+    setBaseUrl(String(doc.base_url ?? DEFAULT_AI_BASE))
+    setModel(String(doc.model ?? DEFAULT_AI_MODEL))
     setExtra(String(doc.extra_instructions ?? ""))
     setRedactContact(
       doc.redact_guest_contact_details == null
@@ -783,6 +801,7 @@ function AiAssistantCard({
 
   const activePreset = presets.find((p) => p.id === provider)
   const activeHint = activePreset?.hint || "Any OpenAI-compatible Chat Completions host"
+  const suggestedModels = activePreset?.models ?? []
   const processorNote =
     activePreset?.processor_note ||
     (baseUrl.includes("11434") || baseUrl.includes("127.0.0.1")
@@ -793,8 +812,8 @@ function AiAssistantCard({
     setProvider(id)
     const p = presets.find((x) => x.id === id)
     if (!p) return
-    if (p.base_url) setBaseUrl(p.base_url)
-    if (p.model) setModel(p.model)
+    setBaseUrl(p.base_url)
+    setModel(p.model)
     setState("idle")
     setTestMsg(null)
   }
@@ -843,22 +862,24 @@ function AiAssistantCard({
         api_key: apiKey || undefined,
       })
       if (r.ok) {
-        setTestMsg(
-          t("Connected ({ms} ms) — {reply}", {
+        setTestMsg({
+          ok: true,
+          text: t("Connected ({ms} ms) — {reply}", {
             ms: r.latency_ms ?? "?",
             reply: (r.reply || "ok").slice(0, 80),
           }),
-        )
+        })
       } else {
-        setTestMsg(
-          t("Failed{status}: {err}", {
+        setTestMsg({
+          ok: false,
+          text: t("Failed{status}: {err}", {
             status: r.status ? ` (${r.status})` : "",
             err: r.error || "unknown error",
           }),
-        )
+        })
       }
     } catch (e) {
-      setTestMsg(serverError(e))
+      setTestMsg({ ok: false, text: serverError(e) })
     } finally {
       setTesting(false)
     }
@@ -871,7 +892,7 @@ function AiAssistantCard({
           <CardTitle>{t("AI assistant (bring your own key)")}</CardTitle>
           <p className="mt-0.5 text-xs text-zinc-400">
             {t(
-              "Kamra Agent for staff. Pick a provider, paste the key, Test. Claude Desktop is MCP (Kamra Agent → Connect your AI) — not an Anthropic key in this form.",
+              "Kamra Agent for staff. Pick a provider, paste its key, then Test. Claude Desktop connects separately over MCP (Kamra Agent → Connect your AI).",
             )}
           </p>
         </div>
@@ -930,11 +951,22 @@ function AiAssistantCard({
             <input
               className={inputCls}
               value={model}
+              list="ai-model-options"
               onChange={(e) => {
                 setModel(e.target.value)
                 setState("idle")
               }}
             />
+            <datalist id="ai-model-options">
+              {suggestedModels.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+            {suggestedModels.length > 0 && (
+              <span className="mt-0.5 block text-xs text-zinc-400">
+                {t("Suggested: {models}", { models: suggestedModels.join(", ") })}
+              </span>
+            )}
           </label>
         </div>
         <label className="block">
@@ -1002,14 +1034,8 @@ function AiAssistantCard({
           )}
         </div>
         {testMsg && (
-          <p
-            className={
-              testMsg.startsWith("Connected") || testMsg.includes("Connected")
-                ? "text-sm text-emerald-700"
-                : "text-sm text-rose-600"
-            }
-          >
-            {testMsg}
+          <p className={testMsg.ok ? "text-sm text-emerald-700" : "text-sm text-rose-600"}>
+            {testMsg.text}
           </p>
         )}
         <p className="text-xs text-zinc-400">
@@ -1017,7 +1043,6 @@ function AiAssistantCard({
           <a href="/hotel/assistant" className="font-medium text-brand-700 hover:underline">
             {t("Kamra Agent → Connect your AI")}
           </a>
-          . {t("Want Claude the model in this chat? Use the OpenRouter preset.")}
         </p>
       </CardContent>
     </Card>

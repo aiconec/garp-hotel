@@ -18,15 +18,15 @@ Ollama, vLLM…), so we stay on ``/chat/completions`` and pin effort to
 
 from __future__ import annotations
 
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-6.1-sol"
 
 # Prefixes matched at the start of the slug, after a provider prefix
 # (``openai/gpt-5.6-luna``), or after a hyphen.
-_REASONING_MARKERS = ("gpt-5", "o1", "o3", "o4")
+_REASONING_MARKERS = ("gpt-5", "gpt-6", "o1", "o3", "o4")
 
 
 def is_reasoning_model(model: str | None) -> bool:
-	"""True for GPT-5.x / o-series slugs, including OpenRouter-style prefixes."""
+	"""True for GPT-5.x / GPT-6.x / o-series slugs, including OpenRouter-style prefixes."""
 	m = (model or "").strip().lower()
 	if not m:
 		return False
