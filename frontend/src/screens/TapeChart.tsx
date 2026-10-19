@@ -332,7 +332,7 @@ export default function TapeChart() {
             </option>
           ))}
         </select>
-        <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 text-sm">
+        <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 text-sm" data-tour="tape-view">
           {(["day", "hour"] as const).map((m) => (
             <button
               key={m}
@@ -348,11 +348,11 @@ export default function TapeChart() {
             </button>
           ))}
         </div>
-        <Button variant="outline" disabled={allocBusy} onClick={suggestAlloc}>
+        <Button variant="outline" disabled={allocBusy} onClick={suggestAlloc} data-tour="tape-auto-assign">
           <Sparkles className="size-4 text-brand-600" />
           {allocBusy ? t("Thinking...") : t("Auto-assign arrivals")}
         </Button>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1" data-tour="tape-dates">
           <Button variant="outline" aria-label={t("Previous")}
             onClick={() => setStart(shiftDate(start, mode === "day" ? -7 : -1))}>
             <ChevronLeft className="size-4" />
@@ -389,7 +389,7 @@ export default function TapeChart() {
       )}
 
       {mode === "day" && (
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm" data-tour="tape-grid">
         <div style={{ minWidth: 130 + DAYS * cellW }}>
           {/* header row */}
           <div className="flex border-b border-zinc-200 bg-zinc-50 text-xs font-medium text-zinc-500">
@@ -408,7 +408,7 @@ export default function TapeChart() {
             })}
           </div>
           {/* house position: sold/capacity per day, demand premium, overbooking */}
-          <div className="flex border-b border-zinc-200 bg-white text-[10px]">
+          <div className="flex border-b border-zinc-200 bg-white text-[10px]" data-tour="tape-position">
             <div className="w-[130px] shrink-0 px-3 py-1 font-medium uppercase tracking-wide text-zinc-400">
               {t("Position")}
             </div>
@@ -504,6 +504,7 @@ export default function TapeChart() {
                             (c) => c.in_res === b.name || c.out_res === b.name)
                           return (
                             <button key={b.name}
+                              data-tour="tape-bar"
                               onClick={() => openBooking(b)}
                               style={{ left: 130 + s * cellW + 2, width: (e - s) * cellW - 4 }}
                               className={cn(

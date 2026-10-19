@@ -170,7 +170,7 @@ export default function CashierTill() {
             ) : null}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2" data-tour="cashier-links">
           <Link
             to="/cashier/sessions"
             className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50"
@@ -193,7 +193,8 @@ export default function CashierTill() {
       ) : null}
 
       {!openTill ? (
-        <Card>
+        // anchored once the session has loaded: the card shows while loading
+        <Card data-tour={session ? "cashier-open" : undefined}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Lock className="size-4" /> {t("Open POS")}
@@ -217,7 +218,7 @@ export default function CashierTill() {
         </Card>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-tour="cashier-totals">
             {[
               [t("Float"), session?.opening_float],
               [t("Cash in"), session?.system_cash ?? session?.totals?.cash],
@@ -244,7 +245,7 @@ export default function CashierTill() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
+            <Card data-tour="cashier-paidout">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Banknote className="size-4" /> {t("Paid out")}
@@ -273,7 +274,7 @@ export default function CashierTill() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card data-tour="cashier-drop">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <ArrowDownToLine className="size-4" /> {t("Cash drop")}
@@ -303,7 +304,7 @@ export default function CashierTill() {
             </Card>
           </div>
 
-          <Card>
+          <Card data-tour="cashier-close">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Wallet className="size-4" /> {t("Close POS")}

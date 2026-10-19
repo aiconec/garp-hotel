@@ -869,7 +869,7 @@ export default function POS() {
         <h1 className="flex items-center gap-2 text-xl font-bold text-zinc-800">
           <UtensilsCrossed className="size-5 text-brand-600" />
           <span className="hidden sm:inline">{t("Restaurant POS")}</span>
-          <select className={inputCls + " !w-auto font-normal"} value={outlet} onChange={(e) => { setOutlet(e.target.value); newOrder() }}>
+          <select className={inputCls + " !w-auto font-normal"} value={outlet} data-tour="pos-outlet" onChange={(e) => { setOutlet(e.target.value); newOrder() }}>
             {outlets.map((o) => <option key={o.name} value={o.name}>{o.outlet_name}</option>)}
           </select>
         </h1>
@@ -895,7 +895,7 @@ export default function POS() {
             <Printer className="size-3.5" />
             <span className="hidden sm:inline">{printKot ? t("KOT printer on") : t("KOT printer off")}</span>
           </button>
-          <div className="relative">
+          <div className="relative" data-tour="pos-keys">
             <button onClick={() => setHelpOpen((v) => !v)}
               className="rounded-lg border border-zinc-300 bg-white p-2 text-zinc-600 hover:bg-zinc-50"
               title={t("Keyboard shortcuts")} aria-label={t("Keyboard shortcuts")}>
@@ -973,18 +973,18 @@ export default function POS() {
 
       <div className="flex min-h-0 flex-1 gap-3">
         {/* ── left: tables + recent (desktop column) ── */}
-        <div className="hidden min-h-0 w-[19rem] shrink-0 flex-col gap-2 overflow-y-auto lg:flex xl:w-[21rem]">
+        <div className="hidden min-h-0 w-[19rem] shrink-0 flex-col gap-2 overflow-y-auto lg:flex xl:w-[21rem]" data-tour="pos-tables">
           {tablesPane}
         </div>
         {/* tables as their own pane on phones */}
         <div className={cn("min-h-0 w-full flex-col gap-2 overflow-y-auto md:hidden",
-          mobilePane === "tables" ? "flex" : "hidden")}>
+          mobilePane === "tables" ? "flex" : "hidden")} data-tour="pos-tables">
           {tablesPane}
         </div>
 
         {/* ── centre: menu ── */}
         <div className={cn("min-h-0 min-w-0 flex-1 md:overflow-y-auto",
-          mobilePane === "menu" ? "block" : "hidden md:block")}>
+          mobilePane === "menu" ? "block" : "hidden md:block")} data-tour="pos-menu">
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
               <input className={inputCls + " pl-9"} placeholder={t("Search menu items…")} value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -1020,7 +1020,7 @@ export default function POS() {
           "min-h-0 w-full flex-col rounded-xl border border-zinc-200 bg-white",
           "md:w-[21rem] md:shrink-0 md:overflow-hidden xl:w-[24rem]",
           mobilePane === "bill" ? "flex" : "hidden md:flex",
-        )}>
+        )} data-tour="pos-bill">
           {/* zone 1: who / where — pinned above the items */}
           <div className="shrink-0 border-b border-zinc-100 p-3 pb-2">
             {/* who / where */}
@@ -1197,7 +1197,7 @@ export default function POS() {
           </div>
 
           {/* zone 3: totals + actions — always visible, sticky on phones */}
-          <div className="sticky bottom-0 z-20 shrink-0 space-y-2 rounded-b-xl border-t border-zinc-100 bg-white p-3 md:static">
+          <div className="sticky bottom-0 z-20 shrink-0 space-y-2 rounded-b-xl border-t border-zinc-100 bg-white p-3 md:static" data-tour="pos-settle">
             <div className="space-y-1 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-zinc-500">{t("Discount")}</span>

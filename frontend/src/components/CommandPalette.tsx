@@ -18,6 +18,7 @@ import {
   Bed,
   Command as CmdIcon,
   FileText,
+  GraduationCap,
   Loader2,
   Search,
   UserCircle2,
@@ -28,6 +29,7 @@ import { visibleApps, type AppNavItem } from "../lib/apps"
 import { cn } from "../lib/utils"
 import { cur, moneyLocale } from "../lib/money"
 import { useT } from "../lib/i18n"
+import { openGuides } from "../tours/events"
 
 interface Result {
   id: string
@@ -248,11 +250,31 @@ export function CommandPalette() {
     [invoices, navigate, t],
   )
 
+  const helpResults = useMemo<Result[]>(
+    () =>
+      fuzzy(`guides guided tours walkthrough help ${t("Guided tours")}`, q)
+        ? [
+            {
+              id: "help:guides",
+              label: t("Guided tours"),
+              hint: t("A short walkthrough of each screen"),
+              icon: GraduationCap,
+              onSelect: () => {
+                setOpen(false)
+                openGuides()
+              },
+            },
+          ]
+        : [],
+    [q, t],
+  )
+
   const groups: { title: string; items: Result[] }[] = [
     { title: t("Reservations"), items: reservationResults },
     { title: t("Invoices"), items: invoiceResults },
     { title: t("Guests"), items: guestResults },
     { title: t("Navigate"), items: navResults },
+    { title: t("Help"), items: helpResults },
   ]
   // one flat, ordered list for arrow-key navigation across all groups
   const flat = groups.flatMap((g) => g.items)

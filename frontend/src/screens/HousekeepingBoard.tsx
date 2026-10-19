@@ -139,7 +139,7 @@ export default function HousekeepingBoard() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2" role="toolbar" aria-label={t("Filter rooms")}>
+      <div className="flex flex-wrap gap-2" role="toolbar" aria-label={t("Filter rooms")} data-tour="hk-filters">
         {(
           [
             ["All", rooms.length, "bg-zinc-400"],
@@ -167,7 +167,7 @@ export default function HousekeepingBoard() {
         ))}
       </div>
 
-      <Card>
+      <Card data-tour="hk-rooms">
         <CardHeader>
           <CardTitle>{t("Rooms")}</CardTitle>
           {floors.length > 1 && (
@@ -207,6 +207,7 @@ export default function HousekeepingBoard() {
                     <div key={r.name} className="relative">
                       <button
                         type="button"
+                        data-tour="hk-room"
                         disabled={busy === r.name}
                         aria-expanded={open === r.name}
                         onClick={() => setOpen(open === r.name ? null : r.name)}

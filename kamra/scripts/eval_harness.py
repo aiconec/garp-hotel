@@ -3822,6 +3822,33 @@ def t86():
 	assert frappe.db.exists("City Ledger Entry", {"folio": folio2}), "credit stay never reached AR"
 
 
+@check("guided tours: progress is per user, a finished tour stays finished, bad input refused")
+def t87():
+	from kamra import tours
+
+	me = frappe.session.user
+	theirs = tours.tour_state()
+	try:
+		frappe.set_user("frontdesk@kamra.local")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
+		assert tours.reset_tours() == {"tours": {}, "offers": True}
+		tours.save_tour("today", "done", 1)
+		state = tours.save_tour("today", "dismissed", 1)
+		assert state["tours"]["today"]["s"] == "done", "closing a finished tour un-finished it"
+		assert tours.tour_state()["tours"]["today"]["s"] == "done", "progress was not stored"
+		for tour, status in (("../today", "done"), ("Today", "done"), ("", "done"),
+		                     ("a" * 41, "done"), ("today", "started")):
+			try:
+				tours.save_tour(tour, status)
+				raise AssertionError(f"accepted tour={tour!r} status={status!r}")
+			except frappe.ValidationError:
+				pass
+		assert tours.set_tour_offers(0)["offers"] is False
+		assert tours.tour_state()["offers"] is False
+	finally:
+		frappe.set_user(me)  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
+	assert tours.tour_state() == theirs, "one user's tour progress reached another"
+
+
 def execute():
 	global RT, ROOM
 	# frappe.locale.get_locale_value crashes (UnboundLocalError) when no
@@ -3839,7 +3866,7 @@ def execute():
 		           t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t47b, t47c, t47d, t48, t49, t50, t51, t53,
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
-		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86):
+		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87):
 			fn()
 	finally:
 		frappe.db.commit = real_commit
