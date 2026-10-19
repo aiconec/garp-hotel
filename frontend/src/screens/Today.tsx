@@ -518,7 +518,7 @@ export default function Today() {
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" data-tour="today-kpis">
         <StatCard
           icon={<LogIn className="size-4" />}
           label={t("Arrivals")}
@@ -565,7 +565,7 @@ export default function Today() {
 
       <div className="grid gap-4 xl:grid-cols-5">
         <div className="min-w-0 space-y-4 xl:col-span-2">
-          <Card>
+          <Card data-tour="today-arrivals">
             <CardHeader>
               <CardTitle>{t("Arrivals")}</CardTitle>
               <LogIn className="size-4 text-zinc-400" aria-hidden />
@@ -586,7 +586,7 @@ export default function Today() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="today-departures">
             <CardHeader>
               <CardTitle>{t("Departures")}</CardTitle>
               <LogOut className="size-4 text-zinc-400" aria-hidden />
@@ -610,7 +610,7 @@ export default function Today() {
         </div>
 
         <div className="min-w-0 space-y-4 xl:col-span-3">
-          <Card>
+          <Card data-tour="today-rooms">
             <CardHeader>
               <CardTitle>{t("Room board")}</CardTitle>
               <span className="text-xs text-zinc-400">
@@ -658,7 +658,7 @@ export default function Today() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="today-inhouse">
             <CardHeader>
               <CardTitle>{t("In-house guests")}</CardTitle>
               <span className="text-xs text-zinc-400">

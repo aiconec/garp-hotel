@@ -94,7 +94,7 @@ export default function Billing() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card data-tour="billing-audit">
         <CardHeader>
           <div>
             <CardTitle>{t("Night audit")}</CardTitle>
@@ -171,7 +171,7 @@ export default function Billing() {
         )}
       </Card>
 
-      <Card>
+      <Card data-tour="billing-pos">
         <CardHeader>
           <div>
             <CardTitle>{t("POS")}</CardTitle>
@@ -185,7 +185,7 @@ export default function Billing() {
         </CardHeader>
       </Card>
 
-      <Card>
+      <Card data-tour="billing-folios">
         <CardHeader>
           <CardTitle>{t("Folios")}</CardTitle>
           <span className="text-xs text-zinc-400">

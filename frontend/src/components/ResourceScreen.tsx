@@ -397,7 +397,7 @@ export function ResourceScreen({
         <div className="flex items-center gap-2">
           {headerAction}
           {config.allowCreate !== false && (
-            <Button onClick={() => openEdit("new")}>
+            <Button onClick={() => openEdit("new")} data-tour="list-new">
               <Plus className="size-4" aria-hidden />
               {t("New")}
             </Button>
@@ -410,7 +410,7 @@ export function ResourceScreen({
             {error}
           </div>
         )}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2" data-tour="list-search">
             {config.searchFields?.length ? (
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-2 size-4 text-zinc-400" />
@@ -470,7 +470,7 @@ export function ResourceScreen({
                 )}
               </div>
             )}
-            <div className="relative ml-auto flex items-center gap-2">
+            <div className="relative ml-auto flex items-center gap-2" data-tour="list-tools">
               <button
                 onClick={exportCsv}
                 title={t("Download the current view as CSV (Excel-ready)")}
@@ -515,7 +515,7 @@ export function ResourceScreen({
               )}
             </div>
           </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-tour="list-table">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">

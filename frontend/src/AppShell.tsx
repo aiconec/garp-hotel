@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   Check,
   ChevronsUpDown,
+  GraduationCap,
   LayoutGrid,
   LogOut,
   Menu,
@@ -42,6 +43,8 @@ import { useT } from "./lib/i18n"
 import { loadLocale } from "./lib/money"
 import { cn } from "./lib/utils"
 import { useKiosk } from "./lib/kiosk"
+import GuidedTours from "./tours/GuidedTours"
+import { openGuides } from "./tours/events"
 
 export interface BookingInitial {
   room_type?: string
@@ -153,7 +156,7 @@ function UserMenu({ user, onSignOut }: { user: string; onSignOut: () => void }) 
 
   const initial = (user || "?").trim().charAt(0).toUpperCase()
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={ref} data-tour="account">
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={t("Account")}
@@ -177,6 +180,16 @@ function UserMenu({ user, onSignOut }: { user: string; onSignOut: () => void }) 
             <Scale className="size-4" aria-hidden />
             {t("Licences")}
           </a>
+          <button
+            onClick={() => {
+              setOpen(false)
+              openGuides()
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+          >
+            <GraduationCap className="size-4" aria-hidden />
+            {t("Guided tours")}
+          </button>
           <button
             onClick={onSignOut}
             className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100"
@@ -209,7 +222,7 @@ function AppSwitcher({
   const go = useOpenApp(() => setOpen(false))
 
   return (
-    <div className={cn("relative", className)} ref={ref}>
+    <div className={cn("relative", className)} ref={ref} data-tour="app-switcher">
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={t("Switch app")}
@@ -290,10 +303,14 @@ function SidebarAppMenu({ apps, current }: { apps: AppDef[]; current: AppDef }) 
   )
 
   if (!canSwitch)
-    return <div className="mb-4 flex items-center gap-2.5 px-1.5 py-1.5">{face}</div>
+    return (
+      <div className="mb-4 flex items-center gap-2.5 px-1.5 py-1.5" data-tour="app-menu">
+        {face}
+      </div>
+    )
 
   return (
-    <div className="relative mb-4" ref={ref}>
+    <div className="relative mb-4" ref={ref} data-tour="app-menu">
       <button
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
@@ -502,7 +519,7 @@ export default function AppShell() {
   }
 
   const sidebar = (
-    <>
+    <div className="flex min-h-full flex-col">
       <div className="mb-5 flex items-center gap-2.5 px-1.5">
         <img src={asset("kamra-mark.svg")} alt="" className="size-7" aria-hidden />
         {/* Stacked: "BizConnect.id HOTEL" on one line crowds the rail. */}
@@ -518,7 +535,7 @@ export default function AppShell() {
 
       {currentApp && <SidebarAppMenu apps={apps} current={currentApp} />}
 
-      <nav aria-label={currentApp ? t(currentApp.name) : undefined}>
+      <nav aria-label={currentApp ? t(currentApp.name) : undefined} data-tour="nav">
         {sections.map((sec, i) => (
           <div key={sec.label ?? `top-${i}`} className={i > 0 ? "mt-5" : undefined}>
             {sec.label && (
@@ -530,7 +547,26 @@ export default function AppShell() {
           </div>
         ))}
       </nav>
-    </>
+
+      <div className="mt-auto pt-6">
+        <button
+          type="button"
+          data-tour="guides"
+          onClick={() => {
+            setNavOpen(false)
+            openGuides()
+          }}
+          className={cn(itemCls, "w-full text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900")}
+        >
+          <GraduationCap
+            className="size-4 shrink-0 text-zinc-400 group-hover:text-zinc-600"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+          <span className="truncate">{t("Guides")}</span>
+        </button>
+      </div>
+    </div>
   )
 
   return (
@@ -575,6 +611,7 @@ export default function AppShell() {
         <header className="sticky top-0 z-40 flex min-w-0 items-center gap-2 border-b border-zinc-200 bg-white/90 px-3 py-2.5 backdrop-blur sm:px-4">
           <button
             onClick={() => setNavOpen(true)}
+            data-tour="menu-button"
             aria-label={t("Open menu")}
             className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800", rail.hide)}
           >
@@ -586,6 +623,7 @@ export default function AppShell() {
               className="min-w-[5rem] max-w-[10rem] truncate rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm font-medium focus:outline-2 focus:outline-brand-600 sm:max-w-[15rem] xl:max-w-[18rem]"
               value={property}
               onChange={(e) => switchProperty(e.target.value)}
+              data-tour="property"
               aria-label={t("Property")}
               title={properties.find((p) => p.name === property)?.property_name}
             >
@@ -602,13 +640,14 @@ export default function AppShell() {
             </span>
           )}
           <div className="flex min-w-0 flex-1 justify-center px-1 lg:px-2">
-            <div className="hidden w-full max-w-md md:block">
+            <div className="hidden w-full max-w-md md:block" data-tour="search">
               <SearchShortcut />
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => window.dispatchEvent(new Event("kamra:open-palette"))}
+              data-tour="search"
               aria-label={t("Open search")}
               className="flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 md:hidden"
             >
@@ -617,7 +656,7 @@ export default function AppShell() {
             <ThemeToggle />
             <UserMenu user={user ?? ""} onSignOut={signOut} />
             {canBook && (
-              <>
+              <div className="flex items-center gap-1.5 sm:gap-2" data-tour="booking-buttons">
                 <Button
                   variant="outline"
                   className="max-md:hidden"
@@ -627,6 +666,7 @@ export default function AppShell() {
                 </Button>
                 <Button
                   onClick={() => setBooking({})}
+                  data-tour="new-booking"
                   aria-label={t("New booking")}
                   title={t("New booking")}
                   className="max-sm:px-2"
@@ -634,7 +674,7 @@ export default function AppShell() {
                   <Plus className="size-4" aria-hidden />
                   <span className="hidden sm:inline">{t("New booking")}</span>
                 </Button>
-              </>
+              </div>
             )}
           </div>
         </header>
@@ -673,6 +713,17 @@ export default function AppShell() {
           <HelpPanel />
           <CommandPalette />
         </>
+      )}
+      {user && (
+        <GuidedTours
+          user={user}
+          roles={roles}
+          modules={modules}
+          canBook={canBook}
+          multiProperty={properties.length > 1}
+          kiosk={kiosk}
+          railFrom={floor ? "xl" : "lg"}
+        />
       )}
 
       {booking && canBook && (

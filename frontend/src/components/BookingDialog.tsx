@@ -719,6 +719,7 @@ export function BookingDialog(props: {
             <div
               role="radiogroup"
               aria-label={t("Booking mode")}
+              data-tour="booking-mode"
               className="ml-auto inline-flex shrink-0 rounded-lg bg-zinc-100 p-0.5 text-sm font-medium"
             >
               {[
@@ -912,7 +913,7 @@ export function BookingDialog(props: {
                   </div>
                 )}
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2" data-tour="booking-guest">
                   <Field label={t("Guest name")}>
                     <div className="relative">
                       <input
@@ -1024,7 +1025,7 @@ export function BookingDialog(props: {
                   </div>
                 )}
 
-                <div className={walkIn ? "grid gap-3 sm:grid-cols-2" : ""}>
+                <div className={walkIn ? "grid gap-3 sm:grid-cols-2" : ""} data-tour="booking-room-type">
                 <Field label={t("Room type")}>
                   <select
                     className={inputCls}
@@ -1092,7 +1093,7 @@ export function BookingDialog(props: {
                 )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(9.5rem,1.6fr)_repeat(3,minmax(0,1fr))]">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(9.5rem,1.6fr)_repeat(3,minmax(0,1fr))]" data-tour="booking-stay">
                   <Field label={t("Check-in")}>
                     <input
                       type="date"
@@ -1164,7 +1165,7 @@ export function BookingDialog(props: {
                   </div>
                 )}
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2" data-tour="booking-extras">
                   <Field label={t("Meal plan")}>
                     <select
                       className={inputCls}
@@ -1649,7 +1650,7 @@ export function BookingDialog(props: {
 
             {/* Quote rail — always visible on lg */}
             <aside className="flex w-full shrink-0 flex-col border-t border-zinc-200 bg-zinc-50 lg:w-80 lg:border-l lg:border-t-0 xl:w-[22rem]">
-              <div className="flex-1 overflow-y-auto px-6 py-5 md:px-7">
+              <div className="flex-1 overflow-y-auto px-6 py-5 md:px-7" data-tour="booking-quote">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
                     {t("Quote")}
@@ -1770,7 +1771,7 @@ export function BookingDialog(props: {
                 )}
               </div>
 
-              <div className="shrink-0 space-y-2 border-t border-zinc-200 bg-white px-6 py-4 md:px-7">
+              <div className="shrink-0 space-y-2 border-t border-zinc-200 bg-white px-6 py-4 md:px-7" data-tour="booking-confirm">
                 {walkIn ? (
                   <>
                     <Button
