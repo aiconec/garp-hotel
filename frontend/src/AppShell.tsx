@@ -62,7 +62,7 @@ export interface ShellContext {
 // mirrors @require_roles on kamra.api.create_booking / walk_in (admins always pass)
 const BOOKING_ROLES = [
   "Front Desk",
-  "Kamra Agent",
+  "Hotel Agent",
   "Hotel Admin",
   "System Manager",
   "Administrator",

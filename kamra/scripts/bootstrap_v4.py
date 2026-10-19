@@ -30,7 +30,7 @@ def execute():
 		"Hotel Admin": (1, 1, 1, 1),
 		"Revenue Manager": (1, 1, 1, 0),
 		"Front Desk": (1, 0, 0, 0),
-		"Kamra Agent": (1, 0, 0, 0),  # agents may READ guardrails, never edit
+		"Hotel Agent": (1, 0, 0, 0),  # agents may READ guardrails, never edit
 	}.items():
 		r, w, c, d = grants
 		_grant("Rate Guardrail", role, r, w, c, delete=d)

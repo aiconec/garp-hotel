@@ -803,7 +803,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Kamra Agent",
+   "role": "Hotel Agent",
    "write": 1
   },
   {
@@ -835,7 +835,7 @@
    "permlevel": 1,
    "read": 1,
    "write": 1,
-   "role": "Kamra Agent"
+   "role": "Hotel Agent"
   }
  ],
  "row_format": "Dynamic",

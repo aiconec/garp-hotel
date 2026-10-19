@@ -21,21 +21,21 @@ PERMS = {
 	"Travel Agent": {
 		"System Manager": (1, 1, 1), "Hotel Admin": (1, 1, 1),
 		"Revenue Manager": (1, 1, 1), "Front Desk": (1, 0, 0),
-		"Finance": (1, 0, 0), "Kamra Agent": (1, 0, 0),
+		"Finance": (1, 0, 0), "Hotel Agent": (1, 0, 0),
 	},
 	"Venue": {
 		"System Manager": (1, 1, 1), "Hotel Admin": (1, 1, 1),
 		"Revenue Manager": (1, 1, 1), "Front Desk": (1, 0, 0),
-		"Kamra Agent": (1, 0, 0),
+		"Hotel Agent": (1, 0, 0),
 	},
 	"Venue Booking": {
 		"System Manager": (1, 1, 1), "Hotel Admin": (1, 1, 1),
 		"Front Desk": (1, 1, 1), "Finance": (1, 0, 0),
-		"Kamra Agent": (1, 1, 1),
+		"Hotel Agent": (1, 1, 1),
 	},
 	"Lost And Found Item": {
 		"System Manager": (1, 1, 1), "Hotel Admin": (1, 1, 1),
-		"Front Desk": (1, 1, 1), "Kamra Agent": (1, 1, 1),
+		"Front Desk": (1, 1, 1), "Hotel Agent": (1, 1, 1),
 	},
 	"Shift Handover": {
 		"System Manager": (1, 1, 1), "Hotel Admin": (1, 1, 1),

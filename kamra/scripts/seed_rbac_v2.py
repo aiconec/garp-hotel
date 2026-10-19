@@ -38,9 +38,9 @@ def ensure_hotel_admin():
 
 
 def ensure_agent_user():
-	if not frappe.db.exists("Role", "Kamra Agent"):
+	if not frappe.db.exists("Role", "Hotel Agent"):
 		frappe.get_doc({
-			"doctype": "Role", "role_name": "Kamra Agent", "desk_access": 0,
+			"doctype": "Role", "role_name": "Hotel Agent", "desk_access": 0,
 		}).insert(ignore_permissions=True)
 		print("created role: Kamra Agent")
 	# agent gets operational rights: everything Front Desk can do
@@ -54,7 +54,7 @@ def ensure_agent_user():
 		"Night Audit Run": (1, 0, 1), "Service Ticket": (1, 1, 1),
 	}
 	for doctype, (r, w, c) in agent_grants.items():
-		_grant(doctype, "Kamra Agent", r, w, c)
+		_grant(doctype, "Hotel Agent", r, w, c)
 	print("Kamra Agent: ops grants set")
 
 	if not frappe.db.exists("User", AGENT_EMAIL):
@@ -66,7 +66,7 @@ def ensure_agent_user():
 			"enabled": 1,
 			"user_type": "System User",
 			"send_welcome_email": 0,
-			"roles": [{"role": "Kamra Agent"}],
+			"roles": [{"role": "Hotel Agent"}],
 		}).insert(ignore_permissions=True)
 		print(f"created user: {AGENT_EMAIL}")
 

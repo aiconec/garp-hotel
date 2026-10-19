@@ -112,7 +112,7 @@ def void_allowance_report(
 
 
 @frappe.whitelist()
-@require_roles("Finance", "Front Desk", "Kamra Agent")
+@require_roles("Finance", "Front Desk", "Hotel Agent")
 def manager_flash(property: str, date: str | None = None):
 	"""The daily flash: yesterday's performance, month to date, today's
 	movement, collections by mode, and the 7-day outlook."""
@@ -195,7 +195,7 @@ def _month_bounds(period: str):
 
 
 @frappe.whitelist()
-@require_roles("Finance", "Revenue Manager", "Kamra Agent")
+@require_roles("Finance", "Revenue Manager", "Hotel Agent")
 def budget_vs_actual(property: str, period: str | None = None):
 	"""Monthly target vs actual: room revenue, occupancy %, ADR, RevPAR - with
 	variance. period is 'YYYY-MM' (defaults to the current month)."""
@@ -271,7 +271,7 @@ def save_budget(property: str, period: str, room_revenue_target: float = 0,
 
 
 @frappe.whitelist()
-@require_roles("Finance", "Revenue Manager", "Kamra Agent")
+@require_roles("Finance", "Revenue Manager", "Hotel Agent")
 def contribution(property: str, from_date: str, to_date: str,
                  by: str = "source"):
 	"""Who brings the business: revenue + room nights + share, grouped by
@@ -300,7 +300,7 @@ def contribution(property: str, from_date: str, to_date: str,
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Hotel Admin", "Kamra Agent")
+@require_roles("Front Desk", "Hotel Admin", "Hotel Agent")
 def sla_report(property: str, from_date: str, to_date: str):
 	"""Operations SLA health from Service Tickets over a window: overall
 	resolution and breach rates, a breakdown by category and by priority,

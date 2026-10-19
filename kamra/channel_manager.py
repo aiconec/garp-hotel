@@ -156,7 +156,7 @@ def _apply_villa_lockout(rows: list[dict], meta: dict) -> None:
 
 
 @frappe.whitelist()
-@require_roles("Revenue Manager", "Hotel Admin", "Kamra Agent")
+@require_roles("Revenue Manager", "Hotel Admin", "Hotel Agent")
 def push_ari(connection: str, days: int | None = None):
 	"""Push availability + rates for one connection, now."""
 	conn = frappe.get_doc("Channel Manager Connection", connection)
@@ -426,7 +426,7 @@ def _norm(s: str) -> str:
 
 
 @frappe.whitelist()
-@require_roles("Revenue Manager", "Hotel Admin", "Kamra Agent")
+@require_roles("Revenue Manager", "Hotel Admin", "Hotel Agent")
 def import_room_mappings(connection: str, dry_run: int = 0):
 	"""Property mapping, done once: pull the provider's room + rate-plan codes
 	(via the adapter's fetch_property_details) and map them onto this
@@ -487,7 +487,7 @@ def import_room_mappings(connection: str, dry_run: int = 0):
 
 
 @frappe.whitelist()
-@require_roles("Revenue Manager", "Hotel Admin", "Front Desk", "Kamra Agent")
+@require_roles("Revenue Manager", "Hotel Admin", "Front Desk", "Hotel Agent")
 def connection_status(property: str):
 	"""The sync-health card: connections, mappings, last push."""
 	out = []

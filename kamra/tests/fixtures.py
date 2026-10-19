@@ -11,7 +11,7 @@ import frappe
 
 PROPERTY = "TEST Banquet Hotel"
 ROLES = ("Front Desk", "Housekeeping", "Finance", "Revenue Manager",
-         "Kamra Agent", "Hotel Admin")
+         "Hotel Agent", "Hotel Admin")
 
 # (login, first name, roles) - the personas the access tests act as
 USERS = {

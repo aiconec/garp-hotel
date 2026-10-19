@@ -12,7 +12,7 @@ from frappe import _
 
 from kamra.authz import require_roles
 
-POS_ROLES = ("Front Desk", "Finance", "Kamra Agent")
+POS_ROLES = ("Front Desk", "Finance", "Hotel Agent")
 # Menus written before coursing existed have no course; they behave as mains.
 DEFAULT_COURSE = "Main"
 COURSE_ORDER = ("Starter", "Main", "Dessert", "Drink")
@@ -757,7 +757,7 @@ def pay_order(order: str, mode: str, pin: str | None = None):
 	try:
 		sess = require_open_session(prop)
 	except Exception:
-		if "Kamra Agent" not in frappe.get_roles() and \
+		if "Hotel Agent" not in frappe.get_roles() and \
 		   frappe.session.user != "Administrator":
 			raise
 	doc.paid = 1

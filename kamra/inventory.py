@@ -41,7 +41,7 @@ from kamra.authz import require_roles
 # consumption is a byproduct of service, not an inventory action. Receiving
 # and counting are money - a goods-in is an asset movement, a stock take is a
 # P&L event - so they sit with Finance (require_roles widens that to admins).
-INVENTORY_READ = ("Front Desk", "Finance", "Kamra Agent", "Hotel Admin")
+INVENTORY_READ = ("Front Desk", "Finance", "Hotel Agent", "Hotel Admin")
 INVENTORY_WRITE = ("Finance",)
 
 STATUS_OK, STATUS_LOW, STATUS_OUT, STATUS_NEGATIVE = "OK", "LOW", "OUT", "NEGATIVE"

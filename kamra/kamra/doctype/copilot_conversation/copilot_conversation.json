@@ -25,7 +25,7 @@
   {"role": "Front Desk", "read": 1, "write": 1, "create": 1, "delete": 1, "if_owner": 1},
   {"role": "Finance", "read": 1, "write": 1, "create": 1, "delete": 1, "if_owner": 1},
   {"role": "Revenue Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "if_owner": 1},
-  {"role": "Kamra Agent", "read": 1, "write": 1, "create": 1, "delete": 1, "if_owner": 1}
+  {"role": "Hotel Agent", "read": 1, "write": 1, "create": 1, "delete": 1, "if_owner": 1}
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

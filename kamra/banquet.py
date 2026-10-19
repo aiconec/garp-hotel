@@ -46,7 +46,7 @@ from frappe.utils import (
 from kamra.authz import require_roles
 
 # who sells and runs functions
-BANQUET_ROLES = ("Front Desk", "Revenue Manager", "Kamra Agent")
+BANQUET_ROLES = ("Front Desk", "Revenue Manager", "Hotel Agent")
 # who may change what things cost
 CATALOGUE_ROLES = ("Front Desk", "Revenue Manager", "Finance")
 # who may see a function without being able to touch it. Housekeeping is

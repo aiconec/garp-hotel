@@ -88,7 +88,7 @@ def _score(prefs: str, vip: bool, room: dict, max_floor, min_floor):
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Revenue Manager", "Kamra Agent")
+@require_roles("Front Desk", "Revenue Manager", "Hotel Agent")
 def suggest_allocation(property: str, date: str | None = None):
 	"""Propose a room for every unassigned arrival on `date`. No mutation."""
 	from frappe.utils import nowdate
@@ -164,7 +164,7 @@ def suggest_allocation(property: str, date: str | None = None):
 
 
 @frappe.whitelist(methods=["POST"])
-@require_roles("Front Desk", "Revenue Manager", "Kamra Agent")
+@require_roles("Front Desk", "Revenue Manager", "Hotel Agent")
 def apply_allocation(property: str, assignments):
 	"""Assign the proposed rooms - run by a person from the tape chart, on their
 	own authority. Each assignment is recorded in the action log."""

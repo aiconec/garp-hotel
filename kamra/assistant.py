@@ -1131,7 +1131,7 @@ def help_ask(property: str, messages):
 # ---------------------------------------------------------------------------
 
 CONVO_ROLES = ("Front Desk", "Finance", "Revenue Manager", "Hotel Admin",
-               "Kamra Agent")
+               "Hotel Agent")
 
 
 def _own_convo(name):

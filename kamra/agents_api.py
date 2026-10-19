@@ -11,7 +11,7 @@ from kamra.authz import require_roles
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Revenue Manager", "Kamra Agent")
+@require_roles("Front Desk", "Finance", "Revenue Manager", "Hotel Agent")
 def activity_feed(property: str | None = None, actor_kind: str | None = None,
                   action_type: str | None = None, limit: int = 50,
                   start: int = 0) -> list[dict]:
@@ -46,7 +46,7 @@ def activity_feed(property: str | None = None, actor_kind: str | None = None,
 
 
 @frappe.whitelist()
-@require_roles("Front Desk", "Finance", "Revenue Manager", "Kamra Agent", scope={"name": "Agent Action Log"})
+@require_roles("Front Desk", "Finance", "Revenue Manager", "Hotel Agent", scope={"name": "Agent Action Log"})
 def activity_detail(name: str) -> dict:
 	"""Everything one ledger row knows — including the before/after
 	snapshots that are too heavy for the feed."""
