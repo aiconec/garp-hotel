@@ -20,6 +20,7 @@ from frappe.utils import add_to_date, get_url, now_datetime
 
 from kamra.authz import require_roles
 from kamra.mcp_tools import TOOL_COUNT
+from kamra.site_conf import site_conf
 
 SCOPE = "kamra.mcp"
 ACCESS_TTL_HOURS = 1
@@ -413,11 +414,11 @@ def connect_info(property: str) -> dict:
 		{"user": frappe.session.user, "property": property, "revoked": 0},
 	)
 	return {
-		"disabled": bool(frappe.conf.get("kamra_mcp_disabled")) or not frappe.conf.get("kamra_mcp_enabled"),
+		"disabled": bool(site_conf("mcp_disabled")) or not site_conf("mcp_enabled"),
 		"mcp_url": mcp_url,
 		"issuer": issuer_url(),
 		"claude_install_url": claude_install_url(prop_name, mcp_url),
-		"claude_code": f"claude mcp add --transport http kamra {mcp_url}",
+		"claude_code": f"claude mcp add --transport http hotel {mcp_url}",
 		"is_public_https": is_public_https(),
 		"property": property,
 		"property_name": prop_name,

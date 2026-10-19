@@ -6,6 +6,8 @@ import { call, getCurrentProperty } from "../lib/api"
 import { serverError } from "../lib/resource"
 import { Button } from "../components/ui/button"
 import { useT } from "../lib/i18n"
+// catalogue copy comes from the server, outside t()
+import { rebrand } from "../lib/brand"
 
 interface Card {
   kind: "module" | "connector" | "bench_app" | "enterprise"
@@ -127,9 +129,9 @@ export default function Marketplace() {
         <section key={cat.category} className="space-y-3">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">
-              {cat.category}
+              {rebrand(cat.category)}
             </h2>
-            <p className="mt-0.5 text-xs text-zinc-400">{cat.blurb}</p>
+            <p className="mt-0.5 text-xs text-zinc-400">{rebrand(cat.blurb)}</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {cat.cards.map((c) => {
@@ -141,7 +143,7 @@ export default function Marketplace() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-semibold text-zinc-800">
-                      {c.name}
+                      {rebrand(c.name)}
                     </span>
                     <span
                       className={
@@ -150,14 +152,14 @@ export default function Marketplace() {
                       }
                     >
                       {c.detail && c.status === "included"
-                        ? c.detail
+                        ? rebrand(c.detail)
                         : t(STATUS_LABEL[c.status] ?? c.status)}
                     </span>
                   </div>
-                  <p className="mt-1 flex-1 text-sm text-zinc-500">{c.blurb}</p>
+                  <p className="mt-1 flex-1 text-sm text-zinc-500">{rebrand(c.blurb)}</p>
 
                   {c.status === "connected" && c.detail && (
-                    <p className="mt-2 text-xs text-emerald-700">{c.detail}</p>
+                    <p className="mt-2 text-xs text-emerald-700">{rebrand(c.detail)}</p>
                   )}
 
                   {/* actions */}

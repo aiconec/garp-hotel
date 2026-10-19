@@ -1440,5 +1440,6 @@
   "Get an API key from your AI provider, for example:": "Dapatkan kunci API dari penyedia AI Anda, misalnya:",
   "Open Settings, AI assistant: pick the provider, paste the key, switch it on and save.": "Buka Pengaturan, Asisten AI: pilih penyedia, tempel kunci, aktifkan, lalu simpan.",
   "Come back here and ask a question.": "Kembali ke sini dan ajukan pertanyaan.",
-  "The key stays on your server and is stored masked. Usage is billed to your own account with the provider.": "Kunci tetap di server Anda dan disimpan tersamar. Pemakaian ditagihkan ke akun Anda sendiri di penyedia tersebut."
+  "The key stays on your server and is stored masked. Usage is billed to your own account with the provider.": "Kunci tetap di server Anda dan disimpan tersamar. Pemakaian ditagihkan ke akun Anda sendiri di penyedia tersebut.",
+  "Licences": "Lisensi"
 }

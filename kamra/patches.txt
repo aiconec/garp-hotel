@@ -21,3 +21,4 @@ kamra.patches.v35.hosting_enquiry_system_manager_only
 kamra.patches.v36.move_kitchen_ledger_off_stock_ledger_entry
 kamra.patches.v37.move_corporate_clients_off_company
 kamra.patches.v38.keep_existing_messages
+kamra.patches.v39.rename_site_config_keys

@@ -15,9 +15,11 @@ import time
 import frappe
 from frappe.utils import get_url
 
+from kamra.site_conf import site_conf
+
 GATEWAY = "Cashfree"
 API_VERSION = "2025-01-01"
-# Kamra's partner referral link; site config kamra_cashfree_signup_url
+# Kamra's partner referral link; site config hotel_cashfree_signup_url
 # points it elsewhere.
 SIGNUP_URL = "https://merchant.cashfree.com/merchants/signup"
 
@@ -74,7 +76,7 @@ def info() -> dict:
 	return {
 		"gateway": GATEWAY,
 		"webhook_url": _webhook_url(),
-		"signup_url": frappe.conf.get("kamra_cashfree_signup_url") or SIGNUP_URL,
+		"signup_url": site_conf("cashfree_signup_url") or SIGNUP_URL,
 		"needs_webhook": False,
 	}
 

@@ -367,7 +367,7 @@
    "fieldname": "enabled_modules",
    "fieldtype": "Small Text",
    "label": "Modules In Use",
-   "description": "Which parts of Kamra this property actually runs, comma separated. Empty = everything. A serviced-apartment operator has no restaurant and no banquet hall, and shouldn't be shown three empty menus on their first morning."
+   "description": "Which parts of BizConnect.id Hotel this property actually runs, comma separated. Empty = everything. A serviced-apartment operator has no restaurant and no banquet hall, and shouldn't be shown three empty menus on their first morning."
   },
   {
    "default": "1",
@@ -597,7 +597,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-11 10:00:00.000000",
+ "modified": "2026-10-19 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Kamra",
  "name": "Property",
