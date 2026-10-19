@@ -54,7 +54,7 @@ def registry(property: str):
 				_module("Finance", "Folios, invoices, night audit."),
 				_module("Copilot",
 				        "In-app Kamra Agent with your own AI key "
-				        "(OpenAI, Gemini, Groq, OpenRouter…)."),
+				        "(Claude, OpenAI, Gemini, Groq, OpenRouter…)."),
 				_module("Events & Groups", "Banquets, blocks and pickup."),
 				_module("Revenue", "Rates, seasons, offers, partners."),
 				_module("POS",
@@ -106,19 +106,20 @@ def registry(property: str):
 			"category": "Bring your own AI",
 			"blurb": "Kamra ships the governed tools + MCP; you bring the "
 			         "intelligence. Connect Claude Desktop over MCP, or power "
-			         "the in-app Agent with any OpenAI-compatible key "
-			         "(OpenAI, Gemini, Groq, OpenRouter, Ollama…).",
+			         "the in-app Agent with your own key (Claude, OpenAI, "
+			         "or any OpenAI-compatible host: Gemini, Groq, "
+			         "OpenRouter, Ollama…).",
 			"cards": [
 				_connector("Connect Claude (MCP)", "claude",
-				           "Claude the app acts as you over hosted MCP — "
-				           "not an Anthropic API key in Settings. Role limits "
-				           "and the Activity Log still apply.",
+				           "Claude the app acts as you over hosted MCP. Role "
+				           "limits and the Activity Log still apply.",
 				           action="route", route="/assistant",
 				           status="connected" if has_key else "available",
 				           detail="Your connector" if has_key else None),
 				_connector("Bring your own model", "openai",
-				           "In-app Kamra Agent: pick OpenAI, Gemini, Groq, "
-				           "OpenRouter or Ollama, paste a key, Test connection.",
+				           "In-app Kamra Agent: pick Claude, OpenAI, Gemini, "
+				           "Groq, OpenRouter or Ollama, paste a key, Test "
+				           "connection.",
 				           action="route", route="/settings",
 				           status="connected" if ai else "configure"),
 			],

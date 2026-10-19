@@ -1,7 +1,8 @@
 """Kamra Agent - the in-app assistant. BYOK, optional, governed.
 
-Talks to any OpenAI-compatible chat endpoint (OpenAI, OpenRouter, Groq,
-Gemini, Azure) with the owner's own key. The model only ever acts through
+Talks to Claude, OpenAI or any OpenAI-compatible chat endpoint (Gemini,
+Groq, OpenRouter, Azure, Ollama) with the owner's own key (kamra.llm_api
+holds the wire formats). The model only ever acts through
 the same whitelisted tool layer agents use: prices come from the pricing
 engine, guardrails and policies apply, and every action lands in the
 Agent Action Log. If the model is wrong, the tools refuse.
@@ -20,16 +21,15 @@ import secrets
 from urllib.parse import urlsplit
 
 import frappe
-import requests
 from frappe.utils import cint, nowdate
 from urllib3.util import parse_url
 
+from kamra import llm_api
 from kamra.assistant_privacy import processor_disclosure, scrub_for_llm
 from kamra.authz import require_roles
-from kamra.llm_compat import chat_payload, retry_chat_payload
+from kamra.llm_compat import DEFAULT_MODEL
 
 MAX_TOOL_ROUNDS = 6
-TIMEOUT = 60
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 # How long a proposed action waits for its Approve click.
@@ -44,6 +44,7 @@ RETRYABLE = ("PIN_REQUIRED", "PIN_NOT_SET", "PIN_MUST_RESET", "NO_OPEN_SESSION")
 # `kamra_ai_hosts` adds more: a hostname (https) or an exact origin such as
 # "http://ollama.internal:11434" for a local model.
 AI_HOSTS = (
+	"api.anthropic.com",
 	"api.openai.com",
 	"generativelanguage.googleapis.com",
 	"api.groq.com",
@@ -495,24 +496,10 @@ def check_base_url(url: str | None) -> str:
 	base = (url or DEFAULT_BASE_URL).strip().rstrip("/")
 	if not url_allowed(base):
 		frappe.throw(
-			"That AI provider address isn't allowed. Use OpenAI, Google "
-			"Gemini, Groq, OpenRouter or Azure OpenAI over https, or ask "
-			"BizConnect.id to allow your own host.")
+			"That AI provider address isn't allowed. Use Claude, OpenAI, "
+			"Google Gemini, Groq, OpenRouter or Azure OpenAI over https, or "
+			"ask BizConnect.id to allow your own host.")
 	return base
-
-
-def _provider_error(resp) -> str:
-	"""The provider's own error message, never the raw body."""
-	msg = ""
-	try:
-		body = resp.json()
-		body = body[0] if isinstance(body, list) and body else body
-		err = body.get("error") if isinstance(body, dict) else None
-		msg = err.get("message") if isinstance(err, dict) else err
-	except Exception:
-		pass
-	text = f"AI provider error ({resp.status_code})"
-	return f"{text}: {str(msg)[:200]}" if isinstance(msg, str) and msg else text
 
 
 def _chat_history(messages) -> list:
@@ -535,7 +522,7 @@ def _settings(property: str):
 
 
 def _provider(property: str):
-	"""Settings, base URL, model and headers for a chat call, or a refusal."""
+	"""Settings, base URL, model and key for a chat, or a refusal."""
 	_assert_ai_allowed()
 	s = _settings(property)
 	if not (s and s.enabled):
@@ -545,9 +532,7 @@ def _provider(property: str):
 	if not api_key:
 		frappe.throw("No API key configured. Add your provider's key under "
 		             "Settings → AI assistant.")
-	headers = {"Authorization": f"Bearer {api_key}",
-	           "Content-Type": "application/json"}
-	return s, check_base_url(s.base_url), s.model or "gpt-4o-mini", headers
+	return s, check_base_url(s.base_url), s.model or DEFAULT_MODEL, api_key
 
 
 @frappe.whitelist()
@@ -563,7 +548,7 @@ def assistant_status(property: str):
 	return {
 		"allowed": ai_allowed(),
 		"enabled": bool(ai_allowed() and s and s.enabled and key),
-		"model": (s.model if s else None) or "gpt-4o-mini",
+		"model": (s.model if s else None) or DEFAULT_MODEL,
 		"base_url": base,
 		"key_hint": key_hint,
 		"processor_disclosure": processor_disclosure(base),
@@ -572,28 +557,42 @@ def assistant_status(property: str):
 	}
 
 
-# Presets for Settings → AI assistant. All speak OpenAI Chat Completions.
-# Claude Desktop is a different path (MCP) — not an Anthropic key here.
+# Presets for Settings → AI assistant: the address, a default model and the
+# models worth suggesting. Claude and OpenAI use their own APIs (tools on
+# GPT-6.1 Sol / GPT-6 Astra need OpenAI's Responses API); the rest speak
+# OpenAI Chat Completions. Claude Desktop is a different path (MCP).
 AI_PROVIDER_PRESETS = (
+	{
+		"id": "claude",
+		"label": "Claude (Anthropic)",
+		"base_url": "https://api.anthropic.com",
+		"model": "claude-opus-5-5",
+		"models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+		"hint": "Paste an sk-ant-… key from platform.claude.com",
+	},
 	{
 		"id": "openai",
 		"label": "OpenAI",
 		"base_url": "https://api.openai.com/v1",
-		"model": "gpt-4o-mini",
+		"model": "gpt-6.1-sol",
+		"models": ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"],
 		"hint": "Paste an sk-… key from platform.openai.com",
 	},
 	{
 		"id": "gemini",
 		"label": "Google Gemini",
 		"base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-		"model": "gemini-2.0-flash",
+		"model": "gemini-3.8-flash",
+		"models": ["gemini-3.8-flash", "gemini-3.5-flash-lite"],
 		"hint": "Paste a Google AI Studio key — uses Gemini's OpenAI-compatible URL",
 	},
 	{
 		"id": "groq",
 		"label": "Groq",
 		"base_url": "https://api.groq.com/openai/v1",
-		"model": "llama-3.3-70b-versatile",
+		"model": "openai/gpt-oss-120b",
+		"models": ["openai/gpt-oss-120b", "openai/gpt-oss-20b",
+		           "llama-3.3-70b-versatile"],
 		"hint": "Fast open models — key from console.groq.com",
 	},
 	{
@@ -601,13 +600,15 @@ AI_PROVIDER_PRESETS = (
 		"label": "OpenRouter",
 		"base_url": "https://openrouter.ai/api/v1",
 		"model": "openai/gpt-4o-mini",
-		"hint": "One key for many models (including Claude-as-model). Not Claude Desktop MCP.",
+		"models": [],
+		"hint": "One key for many providers' models. Not Claude Desktop MCP.",
 	},
 	{
 		"id": "ollama",
 		"label": "Ollama (local)",
 		"base_url": "http://host.docker.internal:11434/v1",
 		"model": "llama3.2",
+		"models": [],
 		"hint": "Local models. From Docker use host.docker.internal; on bare metal use http://127.0.0.1:11434/v1",
 	},
 	{
@@ -615,13 +616,15 @@ AI_PROVIDER_PRESETS = (
 		"label": "Azure OpenAI",
 		"base_url": "",
 		"model": "gpt-4o-mini",
-		"hint": "Paste your Azure resource Chat Completions URL ending in /v1 (or /openai/v1)",
+		"models": [],
+		"hint": "Paste your Azure resource Chat Completions URL ending in /v1 (or /openai/v1); the model is your deployment name",
 	},
 	{
 		"id": "custom",
 		"label": "Custom (OpenAI-compatible)",
 		"base_url": "",
-		"model": "gpt-4o-mini",
+		"model": "",
+		"models": [],
 		"hint": "Any host that implements POST /v1/chat/completions",
 	},
 )
@@ -630,7 +633,7 @@ AI_PROVIDER_PRESETS = (
 @frappe.whitelist()
 @require_roles("Hotel Admin", "System Manager", "Front Desk")
 def provider_presets():
-	"""Dropdown options for Settings — kill 'paste Claude key into OpenAI' tickets."""
+	"""Dropdown options for Settings."""
 	out = []
 	for row in AI_PROVIDER_PRESETS:
 		if row["base_url"] and not url_allowed(row["base_url"]):
@@ -645,8 +648,8 @@ def provider_presets():
 @require_roles("Hotel Admin", "System Manager")
 def test_connection(property: str, base_url: str | None = None,
                     model: str | None = None, api_key: str | None = None):
-	"""One cheap Chat Completions call with no tools. Returns the provider
-	error text when it fails so Setup is diagnosable."""
+	"""One cheap call with no tools. Returns the provider error text when it
+	fails so Setup is diagnosable."""
 	_assert_ai_allowed()
 	import time
 
@@ -655,49 +658,28 @@ def test_connection(property: str, base_url: str | None = None,
 		s.get_password("api_key", raise_exception=False) if s else None)
 	if not key:
 		frappe.throw("No API key — paste one, or save Settings first.")
-	if key.lower().startswith("sk-ant-"):
-		frappe.throw(
-			"That looks like an Anthropic / Claude API key. This chat uses "
-			"OpenAI-compatible Chat Completions only. Use Connect Claude "
-			"(MCP) on BizConnect.id Hotel Agent, or put Claude behind OpenRouter.")
 
 	base = check_base_url(base_url or (s.base_url if s else None))
-	mdl = model or (s.model if s else None) or "gpt-4o-mini"
-	headers = {"Authorization": f"Bearer {key}",
-	           "Content-Type": "application/json"}
-	body = chat_payload(
-		mdl,
-		[{"role": "user", "content": "Reply with exactly: ok"}],
-		temperature=0,
-	)
-	# No tools — simplest possible probe.
+	kind = llm_api.api_kind(base)
+	if key.lower().startswith("sk-ant-") and kind != "claude":
+		frappe.throw("That looks like a Claude API key. Pick the Claude "
+		             "(Anthropic) provider for it.")
+	mdl = model or (s.model if s else None) or DEFAULT_MODEL
+	chat = llm_api.open_chat(
+		base, mdl, key, "",
+		[{"role": "user", "content": "Reply with exactly: ok"}], effort="low")
 	t0 = time.monotonic()
 	try:
-		resp = requests.post(f"{base}/chat/completions", headers=headers,
-		                     json=body, timeout=30, allow_redirects=False)
-	except requests.RequestException:
-		return {"ok": False, "error": f"Could not reach {base}.",
-		        "base_url": base, "model": mdl}
-	ms = int((time.monotonic() - t0) * 1000)
-	if resp.status_code != 200:
-		return {
-			"ok": False,
-			"status": resp.status_code,
-			"error": _provider_error(resp),
-			"base_url": base,
-			"model": mdl,
-			"latency_ms": ms,
-		}
-	try:
-		text = (resp.json()["choices"][0]["message"].get("content") or "")
-	except (KeyError, IndexError, ValueError, TypeError, AttributeError):
-		text = ""
+		text = chat.send().text
+	except llm_api.ProviderError as e:
+		return {"ok": False, "error": str(e), "base_url": base, "model": mdl,
+		        "latency_ms": int((time.monotonic() - t0) * 1000)}
 	return {
 		"ok": True,
 		"reply": text[:200],
 		"base_url": base,
 		"model": mdl,
-		"latency_ms": ms,
+		"latency_ms": int((time.monotonic() - t0) * 1000),
 	}
 
 
@@ -727,39 +709,10 @@ def _tool_allowed(name: str) -> bool:
 
 
 def _tool_defs():
-	return [{
-		"type": "function",
-		"function": {
-			"name": name,
-			"description": desc,
-			"parameters": {
-				"type": "object",
-				"properties": params,
-				"required": [],
-			},
-		},
-	} for name, (_, desc, params, _inject, _mut) in TOOLS.items()
-	  if _tool_allowed(name)]
-
-
-def _post_chat(base: str, headers: dict, body: dict, *, stream: bool = False):
-	"""POST /chat/completions, retrying once if the model rejects the payload.
-
-	GPT-5.6 luna/terra/sol refuse function tools on Chat Completions unless
-	``reasoning_effort`` is ``none`` (#23). Compatible hosts that already
-	accept the first body are unchanged. Redirects aren't followed: the host
-	list is checked on the URL posted to, not on wherever it points.
-	"""
-	url = f"{base}/chat/completions"
-	resp = requests.post(url, headers=headers, json=body, timeout=TIMEOUT,
-	                     stream=stream, allow_redirects=False)
-	if resp.status_code != 400:
-		return resp
-	retry = retry_chat_payload(body, resp.text or "")
-	if not retry:
-		return resp
-	return requests.post(url, headers=headers, json=retry, timeout=TIMEOUT,
-	                     stream=stream, allow_redirects=False)
+	"""(name, description, parameters) of each tool this person may use."""
+	return [(name, desc, params)
+	        for name, (_, desc, params, _inject, _mut) in TOOLS.items()
+	        if _tool_allowed(name)]
 
 
 def _system(property: str, s) -> str:
@@ -922,20 +875,17 @@ REPEATED = ("Not done, and not a new proposal: the same change is already "
             "propose the second after the first is approved.")
 
 
-def _answer_calls(calls, property: str, s, convo: list, actions: list):
+def _answer_calls(calls, property: str, s, actions: list) -> list:
 	"""One round of tool calls: reads run now, changes become proposals.
-	Every call gets one tool message back."""
+	Every call gets one result back: [(call id, result text, is_error)]."""
+	results = []
 	for call in calls:
-		name = call["function"]["name"]
-		try:
-			args = json.loads(call["function"]["arguments"] or "{}")
-		except ValueError:
-			args = {}
+		name = call.name
+		failed = False
 		try:
 			if name not in TOOLS:
 				frappe.throw(f"There is no tool called {name}.")
-			clean = _clean_args(name, args if isinstance(args, dict) else {},
-			                    property)
+			clean = _clean_args(name, call.args, property)
 			if TOOLS[name][4]:
 				proposal = _propose(name, clean, property)
 				actions.append(proposal)
@@ -945,10 +895,11 @@ def _answer_calls(calls, property: str, s, convo: list, actions: list):
 				result = _execute(name, clean, property)
 				actions.append({"tool": name, "ok": True})
 		except Exception as e:
+			failed = True
 			result = {"error": str(e)}
 			actions.append({"tool": name, "ok": False, "error": str(e)[:200]})
-		convo.append({"role": "tool", "tool_call_id": call["id"],
-		              "content": _tool_json_for_provider(result, s)})
+		results.append((call.id, _tool_json_for_provider(result, s), failed))
+	return results
 
 
 def _tool_json_for_provider(result, settings):
@@ -959,32 +910,56 @@ def _tool_json_for_provider(result, settings):
 	return frappe.as_json(scrub_for_llm(result, strict=strict))
 
 
+def _open_agent(property: str, messages):
+	"""A Kamra Agent conversation for this question, with the tools this
+	person may use."""
+	s, base, model, key = _provider(property)
+	chat = llm_api.open_chat(base, model, key, _system(property, s),
+	                         _chat_history(messages), tools=_tool_defs(),
+	                         effort="medium")
+	return s, chat
+
+
+def _run_tools(property: str, s, chat, actions: list) -> str | None:
+	"""Ask, answer the tool calls, ask again until the model answers in
+	text: that text, or None when the rounds run out first."""
+	for _ in range(MAX_TOOL_ROUNDS):
+		try:
+			reply = chat.send()
+		except llm_api.ProviderError as e:
+			frappe.throw(str(e))
+		if not reply.calls:
+			return reply.text
+		chat.add_results(_answer_calls(reply.calls, property, s, actions))
+	return None
+
+
+def _sse(event, data):
+	return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+
+def _stream_answer(chat):
+	"""SSE token events from the model's text answer."""
+	try:
+		for text in chat.stream():
+			yield _sse("token", {"text": text})
+	except Exception as e:
+		yield _sse("error", {"message": str(e)[:150]})
+
+
 @frappe.whitelist(methods=["POST"])
 @require_roles("Front Desk", "Finance", "Revenue Manager")
 def ask(property: str, messages):
 	"""One Kamra Agent turn: history in, answer out. Reads run along the
 	way; changes come back in `actions` as proposals with an `id` for
 	approve_action / decline_action."""
-	s, base, model, headers = _provider(property)
-	convo = ([{"role": "system", "content": _system(property, s)}]
-	         + _chat_history(messages))
+	s, chat = _open_agent(property, messages)
 	actions = []
-	for _ in range(MAX_TOOL_ROUNDS):
-		resp = _post_chat(base, headers, chat_payload(
-			model, convo, tools=_tool_defs(), temperature=0.2))
-		if resp.status_code != 200:
-			frappe.throw(_provider_error(resp))
-		msg = resp.json()["choices"][0]["message"]
-		convo.append(msg)
-
-		calls = msg.get("tool_calls") or []
-		if not calls:
-			return {"reply": msg.get("content") or "", "actions": actions}
-		_answer_calls(calls, property, s, convo, actions)
-
-	return {"reply": "I hit my tool-call limit for one question - "
-	                 "try breaking it into smaller steps.",
-	        "actions": actions}
+	text = _run_tools(property, s, chat, actions)
+	if text is None:
+		text = ("I hit my tool-call limit for one question - "
+		        "try breaking it into smaller steps.")
+	return {"reply": text, "actions": actions}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -992,65 +967,30 @@ def ask(property: str, messages):
 def ask_stream(property: str, messages):
 	"""Streaming Kamra Agent turn (Server-Sent Events). Tools run FIRST
 	(they need the DB, which the request context still holds), emitting an
-	`action` event each, proposals included; then the final answer is
-	streamed token-by-token as `token` events. The generator itself touches
-	no DB - only the provider stream - so it's safe to iterate after the
-	request handler returns.
+	`action` event each, proposals included; then the answer the model gave
+	once the tools were done. Only if the tool rounds run out is a final
+	answer asked for and streamed token-by-token. The generator itself
+	touches no DB - only the provider stream - so it's safe to iterate
+	after the request handler returns.
 
 	Events: action {tool, ok, pending?, id?, args?, context?} · token {text}
 	· error {message} · done {}
 	"""
 	from werkzeug.wrappers import Response
 
-	s, base, model, headers = _provider(property)
-	convo = ([{"role": "system", "content": _system(property, s)}]
-	         + _chat_history(messages))
-
-	# --- resolve tools synchronously (DB access happens here, before streaming)
+	s, chat = _open_agent(property, messages)
 	actions = []
-	for _ in range(MAX_TOOL_ROUNDS):
-		resp = _post_chat(base, headers, chat_payload(
-			model, convo, tools=_tool_defs(), temperature=0.2))
-		if resp.status_code != 200:
-			frappe.throw(_provider_error(resp))
-		msg = resp.json()["choices"][0]["message"]
-		calls = msg.get("tool_calls") or []
-		if not calls:
-			break  # data gathered; regenerate the answer streamed (no tools)
-		convo.append(msg)
-		_answer_calls(calls, property, s, convo, actions)
-
-	def sse(event, data):
-		return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+	text = _run_tools(property, s, chat, actions)
 
 	def gen():
 		for a in actions:
-			yield sse("action", a)
-		try:
-			# final answer streamed WITHOUT tools → the model must produce text
-			r = _post_chat(base, headers, chat_payload(
-				model, convo, stream=True, temperature=0.2), stream=True)
-			if r.status_code != 200:
-				yield sse("error", {"message": f"AI provider error ({r.status_code})"})
-			else:
-				for raw in r.iter_lines():
-					if not raw:
-						continue
-					line = raw.decode("utf-8")
-					if not line.startswith("data: "):
-						continue
-					chunk = line[6:]
-					if chunk == "[DONE]":
-						break
-					try:
-						delta = json.loads(chunk)["choices"][0].get("delta", {})
-					except (ValueError, KeyError, IndexError):
-						continue
-					if delta.get("content"):
-						yield sse("token", {"text": delta["content"]})
-		except Exception as e:
-			yield sse("error", {"message": str(e)[:150]})
-		yield sse("done", {})
+			yield _sse("action", a)
+		if text is not None:
+			if text:
+				yield _sse("token", {"text": text})
+		else:
+			yield from _stream_answer(chat)
+		yield _sse("done", {})
 
 	return Response(gen(), mimetype="text/event-stream", headers={
 		"Cache-Control": "no-cache",
@@ -1169,37 +1109,13 @@ def help_ask(property: str, messages):
 	AI key. Events: token {text} · error {message} · done {}."""
 	from werkzeug.wrappers import Response
 
-	_s, base, model, headers = _provider(property)
-	convo = [{"role": "system", "content": HELP_SYSTEM}] + _chat_history(messages)
-
-	def sse(event, data):
-		return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+	_s, base, model, key = _provider(property)
+	chat = llm_api.open_chat(base, model, key, HELP_SYSTEM,
+	                         _chat_history(messages), effort="low")
 
 	def gen():
-		try:
-			r = _post_chat(base, headers, chat_payload(
-				model, convo, stream=True, temperature=0.3), stream=True)
-			if r.status_code != 200:
-				yield sse("error", {"message": f"AI provider error ({r.status_code})"})
-			else:
-				for raw in r.iter_lines():
-					if not raw:
-						continue
-					line = raw.decode("utf-8")
-					if not line.startswith("data: "):
-						continue
-					chunk = line[6:]
-					if chunk == "[DONE]":
-						break
-					try:
-						delta = json.loads(chunk)["choices"][0].get("delta", {})
-					except (ValueError, KeyError, IndexError):
-						continue
-					if delta.get("content"):
-						yield sse("token", {"text": delta["content"]})
-		except Exception as e:
-			yield sse("error", {"message": str(e)[:150]})
-		yield sse("done", {})
+		yield from _stream_answer(chat)
+		yield _sse("done", {})
 
 	return Response(gen(), mimetype="text/event-stream", headers={
 		"Cache-Control": "no-cache", "X-Accel-Buffering": "no",

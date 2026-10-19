@@ -14,7 +14,8 @@ class TestProviderHosts(unittest.TestCase):
 			return assistant.url_allowed(url)
 
 	def test_listed_providers(self):
-		for url in ("https://api.openai.com/v1",
+		for url in ("https://api.anthropic.com",
+		            "https://api.openai.com/v1",
 		            "https://generativelanguage.googleapis.com/v1beta/openai",
 		            "https://api.groq.com/openai/v1",
 		            "https://openrouter.ai/api/v1",

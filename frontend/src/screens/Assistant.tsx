@@ -15,6 +15,7 @@ import {
   type ConversationSummary,
 } from "../lib/api"
 import { cn } from "../lib/utils"
+import { useT } from "../lib/i18n"
 import { Markdown } from "../lib/markdown"
 
 // Lookups the agent ran. Changes never show here: they are proposals,
@@ -61,32 +62,36 @@ function ThinkingDots() {
   )
 }
 
+const KEY_PAGES = [
+  { label: "Claude", href: "https://platform.claude.com/settings/keys" },
+  { label: "OpenAI", href: "https://platform.openai.com/api-keys" },
+]
+
 function AiSetupNotice() {
+  const { t } = useT()
   return (
     <div className="mx-auto max-w-lg space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-      <p className="font-semibold">BizConnect.id Hotel Agent needs an AI key to start working.</p>
+      <p className="font-semibold">{t("BizConnect.id Hotel Agent needs an AI key to start working.")}</p>
       <ol className="list-decimal space-y-1 pl-5">
         <li>
-          Get an OpenAI API key at{" "}
-          <a
-            className="underline"
-            href="https://platform.openai.com/api-keys"
-            target="_blank"
-            rel="noreferrer"
-          >
-            platform.openai.com/api-keys
-          </a>{" "}
-          (sign up, add billing, create a key).
+          {t("Get an API key from your AI provider, for example:")}{" "}
+          {KEY_PAGES.map((p, i) => (
+            <span key={p.label}>
+              {i > 0 && ", "}
+              <a className="underline" href={p.href} target="_blank" rel="noreferrer">
+                {p.label}
+              </a>
+            </span>
+          ))}
+          .
         </li>
         <li>
-          In BizConnect.id Hotel, open <b>Settings, AI assistant</b>: paste the key, pick a
-          model (gpt-4o-mini works well), switch it on, save.
+          {t("Open Settings, AI assistant: pick the provider, paste the key, switch it on and save.")}
         </li>
-        <li>Come back here and ask a question.</li>
+        <li>{t("Come back here and ask a question.")}</li>
       </ol>
       <p className="text-xs text-amber-700">
-        The key stays on your server and is stored masked. Usage is billed to
-        your own OpenAI account.
+        {t("The key stays on your server and is stored masked. Usage is billed to your own account with the provider.")}
       </p>
     </div>
   )

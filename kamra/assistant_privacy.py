@@ -84,6 +84,11 @@ def processor_disclosure(base_url: str | None) -> str:
 			"Local (Ollama): when the endpoint runs on this server or your LAN, "
 			"chat and tool data stay on your infrastructure — no third-party LLM transfer."
 		)
+	if "anthropic.com" in base:
+		return (
+			"Anthropic (Claude): messages and tool results are processed under "
+			"your Anthropic account (United States — cross-border transfer may apply)."
+		)
 	if "openai.com" in base or "azure.com" in base:
 		return (
 			"OpenAI / Azure OpenAI: messages and tool results are processed under "

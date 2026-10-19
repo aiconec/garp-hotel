@@ -530,7 +530,7 @@
   "KOT printer off": "Printer KOT nonaktif",
   "KOT printer on": "Printer KOT aktif",
   "Kamra Agent": "Kamra Agent",
-  "Kamra Agent for staff. Pick a provider, paste the key, Test. Claude Desktop is MCP (Kamra Agent → Connect your AI) — not an Anthropic key in this form.": "Kamra Agent untuk staf. Pilih penyedia, tempel kunci, lalu Uji. Claude Desktop memakai MCP (Kamra Agent → Hubungkan AI Anda) — bukan kunci Anthropic di formulir ini.",
+  "Kamra Agent for staff. Pick a provider, paste its key, then Test. Claude Desktop connects separately over MCP (Kamra Agent → Connect your AI).": "Kamra Agent untuk staf. Pilih penyedia, tempel kuncinya, lalu Uji. Claude Desktop terhubung terpisah lewat MCP (Kamra Agent → Hubungkan AI Anda).",
   "Kamra Agent → Connect your AI": "Kamra Agent → Hubungkan AI Anda",
   "Kamra Verify": "Kamra Verify",
   "Kamra Verify checks this tax ID with the tax network. Charged per check to your Kamra Connect wallet.": "Kamra Verify memeriksa nomor pajak ini ke jaringan pajak. Ditagih per pemeriksaan ke dompet Kamra Connect Anda.",
@@ -1147,7 +1147,6 @@
   "Waive the fee (logged - manager's call)": "Bebaskan biaya (tercatat - keputusan manajer)",
   "Walk-in": "Walk-in",
   "Want Claude the app?": "Mau pakai aplikasi Claude?",
-  "Want Claude the model in this chat? Use the OpenRouter preset.": "Mau model Claude di chat ini? Gunakan preset OpenRouter.",
   "Warning": "Peringatan",
   "We already have this from your last visit — we'll use it. Add a photo below only to replace it with a newer one.": "Kami sudah punya ini dari kunjungan terakhir Anda — kami akan memakainya. Tambahkan foto di bawah hanya untuk menggantinya dengan yang lebih baru.",
   "Webhook URL": "URL Webhook",
@@ -1435,5 +1434,11 @@
   "This is being handled in another window.": "Ini sedang diproses di jendela lain.",
   "Current room": "Kamar saat ini",
   "New room": "Kamar baru",
-  "Stay status": "Status menginap"
+  "Stay status": "Status menginap",
+  "Suggested: {models}": "Disarankan: {models}",
+  "BizConnect.id Hotel Agent needs an AI key to start working.": "BizConnect.id Hotel Agent memerlukan kunci AI untuk mulai bekerja.",
+  "Get an API key from your AI provider, for example:": "Dapatkan kunci API dari penyedia AI Anda, misalnya:",
+  "Open Settings, AI assistant: pick the provider, paste the key, switch it on and save.": "Buka Pengaturan, Asisten AI: pilih penyedia, tempel kunci, aktifkan, lalu simpan.",
+  "Come back here and ask a question.": "Kembali ke sini dan ajukan pertanyaan.",
+  "The key stays on your server and is stored masked. Usage is billed to your own account with the provider.": "Kunci tetap di server Anda dan disimpan tersamar. Pemakaian ditagihkan ke akun Anda sendiri di penyedia tersebut."
 }
