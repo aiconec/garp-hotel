@@ -4,6 +4,8 @@ export interface TourContext {
   canBook: boolean
   /** More than one property to switch between. */
   multiProperty: boolean
+  /** More than one app to switch between. */
+  multiApp: boolean
   /** The side menu is on screen, not behind the menu button. Set at start. */
   rail: boolean
 }

@@ -14,7 +14,9 @@ export const TOURS: Tour[] = [
     title: "Find your way around",
     summary: "Apps, search, bookings and where to find these tours again.",
     minutes: 1,
-    next: ["today", "hk-board", "restaurant-pos", "billing"],
+    // the first one the person's role can open: the desk, the books, the
+    // housekeeping office, then the restaurant
+    next: ["today", "billing", "hk-board", "restaurant-pos"],
     steps: [
       {
         title: "Welcome to BizConnect.id Hotel",
@@ -25,6 +27,7 @@ export const TOURS: Tour[] = [
         title: "Switch between apps",
         body: "The system is split into apps: Front Desk, Housekeeping, F&B, Finance and more. You see the ones your role uses.",
         side: "right",
+        when: (c) => c.multiApp,
       },
       {
         at: "nav",
@@ -53,7 +56,7 @@ export const TOURS: Tour[] = [
       {
         at: "booking-buttons",
         title: "Book a room",
-        body: "**New booking** takes a reservation for any date. **Walk-in** books, checks in and takes payment in one go.",
+        body: "**New booking** takes a reservation for any date. For a guest at the desk now, **Walk-in** books, checks in and takes payment in one go; it's also a switch inside the booking form.",
         side: "bottom",
         align: "end",
         when: (c) => c.canBook,
