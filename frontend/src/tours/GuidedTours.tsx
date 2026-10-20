@@ -19,6 +19,8 @@ import type { Tour, TourContext, TourState, TourStatus } from "./types"
 type Base = Omit<TourContext, "rail">
 
 const EMPTY: TourState = { tours: {}, offers: true }
+// a tour to pick up after reloading onto a newer build
+const RESUME_KEY = "kamra_tour_resume"
 // the page settles before anything is suggested
 const OFFER_DELAY_MS = 1200
 
@@ -87,10 +89,16 @@ export default function GuidedTours(props: {
   const quiet = useRef(false)
   const stopRef = useRef<(() => void) | null>(null)
   const unmounting = useRef(false)
+  const resumed = useRef(false)
 
   const base = useMemo<Base>(
-    () => ({ roles: props.roles, canBook: props.canBook, multiProperty: props.multiProperty }),
-    [props.roles, props.canBook, props.multiProperty],
+    () => ({
+      roles: props.roles,
+      canBook: props.canBook,
+      multiProperty: props.multiProperty,
+      multiApp: visibleApps(props.roles, props.modules).length > 1,
+    }),
+    [props.roles, props.canBook, props.multiProperty, props.modules],
   )
   const baseRef = useRef(base)
   baseRef.current = base
@@ -149,7 +157,23 @@ export default function GuidedTours(props: {
       setOffer(null)
       setHub(false)
       setRunning(id)
-      const { runTour, findAnchor } = await import("./engine")
+      let engine: typeof import("./engine")
+      try {
+        engine = await import("./engine")
+      } catch {
+        setRunning(null)
+        // A tab older than the last deploy asks for an engine chunk that is
+        // gone. Reload onto the new build once and start the tour there.
+        if (resumed.current) return
+        try {
+          sessionStorage.setItem(RESUME_KEY, id)
+          window.location.reload()
+        } catch {
+          // no session storage: leave it to the person to reload
+        }
+        return
+      }
+      const { runTour, findAnchor } = engine
       // let the Guides sheet unmount before anything is measured
       await new Promise((r) => window.setTimeout(r, 60))
       stopRef.current = runTour(tour, {
@@ -187,6 +211,21 @@ export default function GuidedTours(props: {
       window.removeEventListener(OPEN_GUIDES, onOpen)
       window.removeEventListener(START_TOUR, onStart)
     }
+  }, [start])
+
+  // the tour a reload was for (see start)
+  useEffect(() => {
+    if (resumed.current) return
+    let id: string | null = null
+    try {
+      id = sessionStorage.getItem(RESUME_KEY)
+      sessionStorage.removeItem(RESUME_KEY)
+    } catch {
+      return
+    }
+    if (!id) return
+    resumed.current = true
+    void start(id)
   }, [start])
 
   useEffect(() => {
@@ -292,7 +331,8 @@ function OfferCard(props: {
     <div
       role="status"
       className={cn(
-        "fixed bottom-5 left-5 z-40 w-[22rem] max-w-[calc(100vw-2.5rem)] animate-fade-in rounded-xl border border-zinc-200 bg-white p-4 shadow-lg ring-1 ring-black/5 print:hidden",
+        // above the floating help button on a phone, where the two would meet
+        "fixed bottom-20 left-5 z-40 w-[22rem] sm:bottom-5 max-w-[calc(100vw-2.5rem)] animate-fade-in rounded-xl border border-zinc-200 bg-white p-4 shadow-lg ring-1 ring-black/5 print:hidden",
         props.railFrom === "lg" ? "lg:left-[16.25rem]" : "xl:left-[16.25rem]",
       )}
     >
