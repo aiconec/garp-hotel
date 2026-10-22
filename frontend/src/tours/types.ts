@@ -45,6 +45,9 @@ export interface Tour {
   app?: string
   /** Page it starts on and is suggested on. None = wherever you are. */
   route?: string
+  /** Lives on a page of its own outside the app shell (the housekeeping
+   *  phone app at /hk). Started from the shell, it opens that page. */
+  standalone?: boolean
   minutes: number
   /** Tours to suggest once this one is finished; the first open one wins. */
   next?: string[]

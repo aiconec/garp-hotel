@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { BedDouble, Camera, LogOut, Plane, RefreshCw, Star, Clock, PackageSearch, X } from "lucide-react"
+import { BedDouble, Camera, GraduationCap, LogOut, Plane, RefreshCw, Star, Clock, PackageSearch, X } from "lucide-react"
 import {
   call,
   getCurrentProperty,
@@ -7,6 +7,7 @@ import {
   logout,
   uploadTo,
   whoami,
+  type WhoAmI,
 } from "../lib/api"
 import { subscribeRealtime } from "../lib/realtime"
 import { Badge } from "../components/ui/badge"
@@ -17,6 +18,8 @@ import HkLaundry from "./HkLaundry"
 import { serverError } from "../lib/resource"
 import { cur } from "../lib/money"
 import { useT } from "../lib/i18n"
+import GuidedTours from "../tours/GuidedTours"
+import { startTour } from "../tours/events"
 
 /** The housekeeper's phone app - big targets, one thumb, zero training. */
 
@@ -67,6 +70,7 @@ const hkTone: Record<HkRoom["housekeeping_status"], string> = {
 export default function HkApp() {
   const { t } = useT()
   const [auth, setAuth] = useState<"loading" | "anon" | "ok">("loading")
+  const [me, setMe] = useState<WhoAmI | null>(null)
   const [data, setData] = useState<{ tasks: HkTask[]; rooms: HkRoom[] } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [view, setView] = useState<"mine" | "pool" | "rooms" | "laundry">("mine")
@@ -79,7 +83,10 @@ export default function HkApp() {
 
   const checkAuth = () =>
     whoami()
-      .then((w) => setAuth(w.user === "Guest" ? "anon" : "ok"))
+      .then((w) => {
+        setMe(w.user === "Guest" ? null : w)
+        setAuth(w.user === "Guest" ? "anon" : "ok")
+      })
       .catch((e) => {
         // an unreachable server is not a sign-out - keep trying quietly
         if (isNetworkError(e)) setTimeout(checkAuth, 4000)
@@ -152,7 +159,7 @@ export default function HkApp() {
   const pool = (data?.tasks ?? []).filter((t) => t.claimable)
 
   const TaskCard = ({ task }: { task: HkTask }) => (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <li className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm" data-tour="hk-task">
       <div className="flex items-center gap-3">
         <span className="text-3xl font-bold tabular-nums">{task.room_number}</span>
         <div className="min-w-0 flex-1">
@@ -189,6 +196,7 @@ export default function HkApp() {
       {task.claimable ? (
         <button
           disabled={busy === task.name}
+          data-tour="hk-take"
           onClick={() => run(task.name, "kamra.api.hk_claim_task")}
           className="mt-3 w-full rounded-xl bg-brand-600 py-3 text-base font-semibold text-white active:bg-brand-700"
         >
@@ -225,7 +233,7 @@ export default function HkApp() {
             </div>
           </div>
         ) : (
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex gap-2" data-tour="hk-take">
             <button
               disabled={busy === task.name}
               onClick={() => setRejecting(task.name)}
@@ -279,7 +287,10 @@ export default function HkApp() {
                 ))}
               </div>
             )}
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-300 py-2.5 text-sm font-medium text-zinc-600 active:bg-zinc-100">
+            <label
+              className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-300 py-2.5 text-sm font-medium text-zinc-600 active:bg-zinc-100"
+              data-tour="hk-photo"
+            >
               <Camera className="size-4" aria-hidden />
               {(task.media ?? []).length ? t("Add another photo / video") : t("Add photo / video")}
               <input
@@ -296,7 +307,7 @@ export default function HkApp() {
               />
             </label>
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex gap-2" data-tour="hk-status">
             {task.status === "Pending" ? (
               <button
                 disabled={busy === task.name}
@@ -329,9 +340,13 @@ export default function HkApp() {
         <img src={asset("kamra-mark.svg")} alt="" className="size-6" aria-hidden />
         <span className="font-semibold">{t("Housekeeping")}</span>
         <span className="ml-auto flex items-center gap-3">
+          <button onClick={() => startTour("hk-phone")} aria-label={t("Guided tour")}>
+            <GraduationCap className="size-5 text-zinc-400" />
+          </button>
           <button
             onClick={() => { setLogItem({ desc: "", condition: "Found", room: "" }); setLogMsg(null) }}
             aria-label={t("Log a lost or found item")}
+            data-tour="hk-lost"
           >
             <PackageSearch className="size-5 text-zinc-400" />
           </button>
@@ -439,7 +454,7 @@ export default function HkApp() {
         {view === "laundry" && <HkLaundry rooms={data?.rooms ?? []} />}
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-zinc-200 bg-white">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-zinc-200 bg-white" data-tour="hk-tabs">
         {(
           [
             ["mine", t("My Tasks{n}", { n: mine.length ? ` (${mine.length})` : "" })],
@@ -451,6 +466,7 @@ export default function HkApp() {
           <button
             key={key}
             onClick={() => setView(key)}
+            data-tour={key === "mine" ? "hk-mytasks" : undefined}
             className={cn(
               "py-3.5 text-sm font-semibold",
               view === key ? "text-brand-700" : "text-zinc-400",
@@ -650,6 +666,18 @@ export default function HkApp() {
             )}
           </div>
         </div>
+      )}
+
+      {me && (
+        <GuidedTours
+          user={me.full_name || me.user}
+          roles={me.roles}
+          canBook={false}
+          multiProperty={false}
+          kiosk={false}
+          railFrom="none"
+          standalone
+        />
       )}
     </div>
   )

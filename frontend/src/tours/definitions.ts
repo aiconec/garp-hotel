@@ -15,8 +15,8 @@ export const TOURS: Tour[] = [
     summary: "Apps, search, bookings and where to find these tours again.",
     minutes: 1,
     // the first one the person's role can open: the desk, the books, the
-    // housekeeping office, then the restaurant
-    next: ["today", "billing", "hk-board", "restaurant-pos"],
+    // housekeeping office, the restaurant, then the attendant's phone app
+    next: ["today", "billing", "hk-board", "restaurant-pos", "hk-phone"],
     steps: [
       {
         title: "Welcome to BizConnect.id Hotel",
@@ -299,6 +299,67 @@ export const TOURS: Tour[] = [
         title: "Change a status",
         body: "Tap a room to set its status. The front desk sees the change straight away.",
         optional: true,
+      },
+    ],
+  },
+
+  {
+    id: "hk-phone",
+    version: 1,
+    title: "Housekeeping phone app",
+    summary: "Take a room, add photo proof and mark it done: the attendant's day on one screen.",
+    app: "housekeeping",
+    route: "/hk",
+    standalone: true,
+    minutes: 1,
+    steps: [
+      {
+        title: "Your housekeeping app",
+        body: "Rooms to clean, photo proof and room charges, made for one thumb. A one-minute look.",
+      },
+      {
+        at: "hk-tabs",
+        title: "Four tabs",
+        body: "**My Tasks** is your list, arrivals first. **Available** holds rooms nobody has taken. **Rooms** shows every room: tap an occupied one to post minibar or laundry. **Laundry** tracks linen and guest laundry.",
+        side: "top",
+      },
+      {
+        at: "hk-task",
+        title: "A room to clean",
+        body: "Each card shows the room, the job and its priority. A plane means a guest arrives today; read any guest request before you go in.",
+        optional: true,
+      },
+      {
+        at: "hk-take",
+        title: "Take it or accept it",
+        body: "**Take this room** puts an unassigned room on your list. A room your supervisor sends you waits for **Accept**, or **Decline** with a reason.",
+        optional: true,
+      },
+      {
+        at: "hk-photo",
+        title: "Photo proof",
+        body: "Tap **Add photo / video** to photograph the finished room. The front desk sees the pictures under **Cleaning photos** on its room board.",
+        optional: true,
+      },
+      {
+        at: "hk-status",
+        title: "Start and finish",
+        body: "**Start** when you go in and **Done ✓** when the room is ready. Every room board updates straight away.",
+        optional: true,
+      },
+      {
+        at: "hk-lost",
+        title: "Lost and found",
+        body: "Found something, or something is missing or damaged? Log it here, with the room.",
+        side: "bottom",
+        align: "end",
+      },
+      {
+        at: "hk-mytasks",
+        title: "Every room, the same way",
+        body: "Take or accept the room, **Start**, add photos, **Done ✓**. Photos go on a room that is on your list, so take it first.",
+        side: "top",
+        align: "start",
       },
     ],
   },

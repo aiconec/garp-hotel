@@ -6,6 +6,7 @@ import { Sheet } from "../components/ui/sheet"
 import { APPS, visibleApps } from "../lib/apps"
 import { call } from "../lib/api"
 import { t as translate, useT } from "../lib/i18n"
+import { toFullPath } from "../lib/routing"
 import { cn } from "../lib/utils"
 import { TOURS, tourById } from "./definitions"
 import { OPEN_GUIDES, START_TOUR } from "./events"
@@ -68,8 +69,12 @@ export default function GuidedTours(props: {
   canBook: boolean
   multiProperty: boolean
   kiosk: boolean
-  /** Floor pages keep the rail in the drawer until xl. */
-  railFrom: "lg" | "xl"
+  /** Where the side rail starts (floor pages keep it in the drawer until
+   *  xl); "none" on a page without one. */
+  railFrom: "lg" | "xl" | "none"
+  /** Mounted on a page of its own outside the shell (the phone app): only
+   *  that page's tours, suggested on the first visit with no welcome first. */
+  standalone?: boolean
 }) {
   const { t } = useT()
   const navigate = useNavigate()
@@ -102,7 +107,13 @@ export default function GuidedTours(props: {
   )
   const baseRef = useRef(base)
   baseRef.current = base
-  const tours = useMemo(() => availableTours(base, props.modules), [base, props.modules])
+  const tours = useMemo(
+    () =>
+      availableTours(base, props.modules).filter(
+        (x) => !props.standalone || (x.standalone && x.route === path),
+      ),
+    [base, props.modules, props.standalone, path],
+  )
   const toursRef = useRef(tours)
   toursRef.current = tours
 
@@ -153,6 +164,16 @@ export default function GuidedTours(props: {
     async (id: string) => {
       const tour = tourById(id)
       if (!tour) return
+      if (tour.standalone && !props.standalone) {
+        // its page is outside the shell: open it and pick the tour up there
+        try {
+          sessionStorage.setItem(RESUME_KEY, id)
+        } catch {
+          // without session storage the page opens and suggests the tour itself
+        }
+        window.location.assign(toFullPath(tour.route ?? "/"))
+        return
+      }
       stopRef.current?.()
       setOffer(null)
       setHub(false)
@@ -196,7 +217,7 @@ export default function GuidedTours(props: {
         },
       })
     },
-    [navigate, record],
+    [navigate, record, props.standalone],
   )
 
   useEffect(() => {
@@ -311,7 +332,7 @@ export default function GuidedTours(props: {
 
 function OfferCard(props: {
   offer: Offer
-  railFrom: "lg" | "xl"
+  railFrom: "lg" | "xl" | "none"
   onStart: () => void
   onDismiss: () => void
 }) {
@@ -331,9 +352,11 @@ function OfferCard(props: {
     <div
       role="status"
       className={cn(
-        // above the floating help button on a phone, where the two would meet
-        "fixed bottom-20 left-5 z-40 w-[22rem] sm:bottom-5 max-w-[calc(100vw-2.5rem)] animate-fade-in rounded-xl border border-zinc-200 bg-white p-4 shadow-lg ring-1 ring-black/5 print:hidden",
-        props.railFrom === "lg" ? "lg:left-[16.25rem]" : "xl:left-[16.25rem]",
+        "fixed bottom-20 left-5 z-40 w-[22rem] max-w-[calc(100vw-2.5rem)] animate-fade-in rounded-xl border border-zinc-200 bg-white p-4 shadow-lg ring-1 ring-black/5 print:hidden",
+        // bottom-20 clears the floating help button on a phone and the phone
+        // app's tab bar everywhere; beside a rail, start past it
+        props.railFrom === "lg" && "sm:bottom-5 lg:left-[16.25rem]",
+        props.railFrom === "xl" && "sm:bottom-5 xl:left-[16.25rem]",
       )}
     >
       <div className="flex items-start gap-3">
