@@ -7,6 +7,8 @@ metrics rolled up across every property the signed-in user can access, with
 a per-property table - the chain's central view.
 """
 
+from decimal import ROUND_HALF_UP, Decimal
+
 import frappe
 from frappe import _
 from frappe.utils import date_diff, getdate, nowdate
@@ -177,6 +179,11 @@ def property_dashboard(property: str, date: str | None = None,
 		"revenue_today": round(
 			today.get("room_revenue", 0) + today.get("fnb_revenue", 0)
 			+ today.get("other_revenue", 0), 0),
+		# Room revenue ÷ rooms available today — same day as revenue_today.
+		# (MTD RevPAR lives under statistics.revpar for the flash report.)
+		"revpar": today.get("revpar", 0),
+		"adr": today.get("adr", 0),
+		"room_revenue_today": today.get("room_revenue", 0),
 		"collections_today": finance["collections_today"],
 		# statistics (month to date)
 		"statistics": {
@@ -202,6 +209,15 @@ def property_dashboard(property: str, date: str | None = None,
 	}
 
 
+def _whole(amount) -> float:
+	"""Round money to whole units, half up - the way the portfolio shows it.
+	Python's round() is half-to-even (11792.5 -> 11792) while the browser
+	rounds half up (11,793), so a total rounded by one and a row by the other
+	disagreed by a unit. Rows are rounded here once; totals add the rounded
+	rows, so the tile is always the sum of the table."""
+	return float(Decimal(str(amount or 0)).quantize(Decimal("1"), ROUND_HALF_UP))
+
+
 def _property_summary(property: str, start: str, end: str):
 	"""Compact headline numbers for one property in the portfolio table:
 	the period's business, and what is in house and owed right now."""
@@ -225,9 +241,9 @@ def _property_summary(property: str, start: str, end: str):
 			"status": ("in", ["Checked In", "Checked Out"])}),
 		"in_house": frappe.db.count("Reservation", {
 			"property": property, "status": "Checked In"}),
-		"revenue": s["revenue"],
-		"collections": s["collections"],
-		"outstanding": float(outstanding or 0),
+		"revenue": _whole(s["revenue"]),
+		"collections": _whole(s["collections"]),
+		"outstanding": _whole(outstanding),
 	}
 
 
@@ -259,11 +275,12 @@ def portfolio_dashboard(date: str | None = None,
 		"arrivals": sum(r["arrivals"] for r in rows),
 		"departures": sum(r["departures"] for r in rows),
 		"in_house": sum(r["in_house"] for r in rows),
+		# sums of the already-rounded rows: the tile equals the table
 		"revenue": revenue,
 		"collections": collections,
 		"revenue_today": revenue,
 		"collections_today": collections,
-		"outstanding": round(sum(r["outstanding"] for r in rows), 0),
+		"outstanding": sum(r["outstanding"] for r in rows),
 	}
 	rows.sort(key=lambda r: r["revenue"], reverse=True)
 	return {"date": date, "from_date": start, "to_date": end,

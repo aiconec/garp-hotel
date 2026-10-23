@@ -36,6 +36,7 @@
   "room_levy_label",
   "room_levy_percent",
   "room_levy_taxable",
+  "default_company_billing",
   "access_instructions",
   "require_precheckin_for_access",
   "hourly_view_start",
@@ -59,6 +60,7 @@
   "advance_percent",
   "registration_fee",
   "require_cashier_pin",
+  "petty_cash_float",
   "business_date",
   "showcase_description",
   "hero_image",
@@ -75,7 +77,12 @@
   "sell_message",
   "free_cancel_days",
   "cancellation_fee",
+  "cancellation_tiers",
   "no_show_charge",
+  "no_show_timing",
+  "protect_late_arrivals",
+  "waive_no_show_fee_for_ota",
+  "non_guaranteed_release_time",
   "deposit_pct",
   "driving_directions",
   "latitude",
@@ -83,6 +90,9 @@
   "gallery",
   "house_rules",
   "pets_policy",
+  "pets_allowed",
+  "pet_charge",
+  "pet_charge_basis",
   "children_policy",
   "extra_bed_policy",
   "faqs",
@@ -90,7 +100,8 @@
   "meta_description",
   "og_image",
   "page_slug",
-  "overbooking_pct"
+  "overbooking_pct",
+  "setup_wants"
  ],
  "fields": [
   {
@@ -265,6 +276,14 @@
    "default": "1"
   },
   {
+   "default": "Room and F&B (liquor to guest)",
+   "description": "What a credit company pays when it has no billing rules of its own. Explicit rules always win; liquor never bills to a company.",
+   "fieldname": "default_company_billing",
+   "fieldtype": "Select",
+   "label": "Default company billing",
+   "options": "Room and F&B (liquor to guest)\nRoom only\nEverything except liquor\nNothing (guest pays unless rules say so)"
+  },
+  {
    "description": "Released to the guest only after payment, deposit, and optional pre-check-in gates pass.",
    "fieldname": "access_instructions",
    "fieldtype": "Text",
@@ -404,6 +423,13 @@
    "default": "0"
   },
   {
+   "fieldname": "petty_cash_float",
+   "fieldtype": "Currency",
+   "label": "Petty cash float",
+   "default": "0",
+   "description": "Standing imprest for this property only. Each hotel keeps its own petty cash box and vouchers."
+  },
+  {
    "fieldname": "business_date",
    "fieldtype": "Date",
    "label": "Business Date",
@@ -506,11 +532,46 @@
    "options": "None\nFirst Night\nFull Stay"
   },
   {
+   "fieldname": "cancellation_tiers",
+   "fieldtype": "Table",
+   "label": "Cancellation Tiers",
+   "options": "Cancellation Tier",
+   "description": "Leave empty to use the single free-cancellation window above. Add bands for a tiered policy, e.g. 7 days / 0%, 3 days / 50%, 0 days / 100%."
+  },
+  {
    "default": "First Night",
    "fieldname": "no_show_charge",
    "fieldtype": "Select",
    "label": "No-show Charge",
    "options": "None\nFirst Night\nFull Stay"
+  },
+  {
+   "default": "At audit for arrival date",
+   "description": "When an arrival that never checked in becomes a No Show. At audit for arrival date: the night audit that closes the arrival date marks it. One day later: it stays Due In until the audit of the following day.",
+   "fieldname": "no_show_timing",
+   "fieldtype": "Select",
+   "label": "No-show Timing",
+   "options": "At audit for arrival date\nOne day later"
+  },
+  {
+   "default": "1",
+   "description": "When on, an arrival due on the date being closed is held as Due In, not marked a No Show, if it is flagged Late Arrival, or its ETA (property local time; times before 06:00 mean after midnight) is later than the moment the audit runs. A held arrival is marked a No Show at the next audit if it still has not checked in.",
+   "fieldname": "protect_late_arrivals",
+   "fieldtype": "Check",
+   "label": "Protect Late Arrivals"
+  },
+  {
+   "default": "1",
+   "description": "Skip the no-show fee for bookings from an OTA or channel (source OTA, a channel or an OTA reference), because the OTA collects under its own policy. The reservation is still marked No Show.",
+   "fieldname": "waive_no_show_fee_for_ota",
+   "fieldtype": "Check",
+   "label": "Waive No-show Fee for OTA Bookings"
+  },
+  {
+   "description": "Blank = off. At this local time, today's arrivals that are not guaranteed are cancelled with no fee and the room is released. Guaranteed means: an advance paid, a payment or deposit on the folio, an OTA or channel booking, or a company (corporate) booking. Bookings made after the release time and stays flagged Late Arrival are left alone.",
+   "fieldname": "non_guaranteed_release_time",
+   "fieldtype": "Time",
+   "label": "Release Non-guaranteed Arrivals At"
   },
   {
    "default": "0",
@@ -549,6 +610,29 @@
    "fieldname": "pets_policy",
    "fieldtype": "Small Text",
    "label": "Pets Policy"
+  },
+  {
+   "default": "0",
+   "description": "Lets guests and the desk add pets to a booking. Unchecked, a booking with pets is refused.",
+   "fieldname": "pets_allowed",
+   "fieldtype": "Check",
+   "label": "Pets Allowed"
+  },
+  {
+   "default": "0",
+   "depends_on": "pets_allowed",
+   "description": "Charge per pet, added to the quote as its own line. 0 = pets stay free.",
+   "fieldname": "pet_charge",
+   "fieldtype": "Currency",
+   "label": "Pet Charge"
+  },
+  {
+   "default": "Per stay",
+   "depends_on": "pets_allowed",
+   "fieldname": "pet_charge_basis",
+   "fieldtype": "Select",
+   "label": "Pet Charge Basis",
+   "options": "Per stay\nPer night"
   },
   {
    "fieldname": "children_policy",
@@ -592,12 +676,19 @@
    "fieldtype": "Percent",
    "label": "Overbooking Allowance %",
    "description": "Sell unassigned bookings above physical capacity by this much (0 = never overbook). Room types can override."
+  },
+  {
+   "fieldname": "setup_wants",
+   "fieldtype": "Small Text",
+   "label": "Setup Wishlist",
+   "hidden": 1,
+   "description": "What was asked for during setup (e.g. channel-manager), so the Finish setup list can remind."
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-19 12:00:00.000000",
+ "modified": "2026-10-20 17:00:00.000000",
  "modified_by": "Administrator",
  "module": "Kamra",
  "name": "Property",
@@ -668,6 +759,12 @@
    "read": 1,
    "report": 1,
    "role": "Housekeeping Supervisor"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "role": "Night Auditor"
   }
  ],
  "row_format": "Dynamic",

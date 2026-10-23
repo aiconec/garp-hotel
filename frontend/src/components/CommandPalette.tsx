@@ -20,12 +20,17 @@ import {
   FileText,
   GraduationCap,
   Loader2,
+  LayoutGrid,
+  LogOut,
   Search,
+  Settings2,
+  Sparkles,
   UserCircle2,
 } from "lucide-react"
 import { call, getCurrentProperty } from "../lib/api"
 import { useAuth } from "../lib/auth"
 import { visibleApps, type AppNavItem } from "../lib/apps"
+import { FEATURES } from "../lib/searchIndex"
 import { cn } from "../lib/utils"
 import { cur, moneyLocale } from "../lib/money"
 import { useT } from "../lib/i18n"
@@ -39,17 +44,22 @@ interface Result {
   onSelect: () => void
 }
 
-// Simple substring fuzzy: every character of q must appear in order in text.
-function fuzzy(text: string, q: string): boolean {
-  if (!q) return true
-  const t = text.toLowerCase()
-  const s = q.toLowerCase()
-  let i = 0
-  for (const ch of t) {
-    if (ch === s[i]) i++
-    if (i === s.length) return true
+// Every typed word must start a word of the text ("cash dr" finds "Cash
+// drop"), so a few letters never match half the app the way a loose
+// in-order letter match does. Score: lower is better.
+function rank(text: string, q: string): number | null {
+  const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  const toks = q.toLowerCase().split(/\s+/).filter(Boolean)
+  if (!toks.length) return 0
+  let score = 0
+  for (const tok of toks) {
+    const i = words.findIndex((w) => w.startsWith(tok))
+    if (i < 0) {
+      if (!text.toLowerCase().includes(tok)) return null
+      score += 20
+    } else score += i === 0 ? 0 : 2 + Math.min(i, 6)
   }
-  return false
+  return score
 }
 
 // Nav commands are derived from the same role-filtered app registry the
@@ -83,6 +93,9 @@ export function CommandPalette() {
   const [reservations, setReservations] = useState<{ name: string; guest?: string; guest_name: string; check_in_date: string; status: string; room?: string | null }[]>([])
   const [invoices, setInvoices] = useState<{ name: string; invoice_number: string; reservation?: string; guest?: string; guest_name?: string; grand_total: number; status: string }[]>([])
   const [searching, setSearching] = useState(false)
+  const [settingsIdx, setSettingsIdx] = useState<
+    { id: string; label: string; where: string; to: string; words: string }[]
+  >([])
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -119,12 +132,48 @@ export function CommandPalette() {
     }
   }, [open])
 
+  // The settings registry, once per open: every setting by name, so
+  // "refund limit" or "pin" lands on the page that holds it.
+  useEffect(() => {
+    if (!open || settingsIdx.length) return
+    type Schema = {
+      modules: {
+        id: string
+        title: string
+        description?: string
+        sections: { title: string; settings: { key: string; label: string; hint?: string }[] }[]
+      }[]
+    }
+    call<Schema>("kamra.settings.settings_schema", { property: getCurrentProperty() })
+      .then((sc) => {
+        const out: typeof settingsIdx = []
+        for (const m of sc.modules ?? []) {
+          out.push({ id: `set:${m.id}`, label: m.title, where: "Settings", to: `/settings/${m.id}`, words: `${m.title} ${m.description ?? ""} settings` })
+          for (const sec of m.sections) {
+            for (const st of sec.settings) {
+              out.push({
+                id: `set:${m.id}:${st.key}`,
+                label: st.label,
+                where: `${m.title} › ${sec.title}`,
+                to: `/settings/${m.id}`,
+                words: `${st.label} ${st.hint ?? ""} ${sec.title} ${m.title}`,
+              })
+            }
+          }
+        }
+        setSettingsIdx(out)
+      })
+      .catch(() => undefined)
+  }, [open, settingsIdx.length])
+
   // typing moves the highlight back to the top of the fresh result set
   useEffect(() => setCursor(0), [q])
 
   // Debounced remote search once the user has typed at least 2 chars.
+  // "check out 204" searches for "204"
+  const searchQ = q.replace(/check\s*-?\s*out/i, "").trim()
   useEffect(() => {
-    if (!open || q.trim().length < 2) {
+    if (!open || searchQ.length < 2) {
       setGuests([])
       setReservations([])
       setInvoices([])
@@ -137,7 +186,7 @@ export function CommandPalette() {
         const [g, r, inv] = await Promise.all([
           call<{ name: string; full_name: string; phone?: string }[]>(
             "kamra.api.guest_search",
-            { q: q.trim() },
+            { q: searchQ },
           ).catch(() => []),
           call<{
             name: string
@@ -148,7 +197,7 @@ export function CommandPalette() {
             room?: string | null
           }[]>("kamra.api.find_reservations", {
             property: getCurrentProperty(),
-            query: q.trim(),
+            query: searchQ,
           }).catch(() => []),
           call<{
             name: string
@@ -160,7 +209,7 @@ export function CommandPalette() {
             status: string
           }[]>("kamra.api.find_invoices", {
             property: getCurrentProperty(),
-            query: q.trim(),
+            query: searchQ,
           }).catch(() => []),
         ])
         if (cancelled) return
@@ -175,20 +224,27 @@ export function CommandPalette() {
       cancelled = true
       clearTimeout(handle)
     }
-  }, [q, open])
+  }, [searchQ, open])
 
   const navItems = useMemo(() => navItemsForRoles(roles), [roles])
 
   const navResults = useMemo<Result[]>(
     () =>
       navItems
-        .filter(({ item, app }) =>
-          fuzzy(`${item.label} ${app} ${t(item.label)} ${t(app)}`, q),
-        )
+        .map(({ item, app }) => ({
+          item,
+          app,
+          score: rank(
+            `${t(item.label)} ${item.label} ${t(app)} ${item.group ?? ""} ${(item.keywords ?? []).map((k) => `${k} ${t(k)}`).join(" ")}`,
+            q,
+          ),
+        }))
+        .filter((r) => r.score !== null)
+        .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
         .map(({ item, app }) => ({
           id: `nav:${item.to ?? item.href ?? item.label}`,
           label: t(item.label),
-          hint: t(app),
+          hint: item.group ? `${t(app)} · ${t(item.group)}` : t(app),
           icon: item.icon,
           onSelect: () => {
             setOpen(false)
@@ -198,6 +254,66 @@ export function CommandPalette() {
         })),
     [navItems, q, navigate, t],
   )
+
+  // Jobs people ask for by name, and the app (module) each belongs to.
+  const reachable = useMemo(() => new Set(navItems.map((n) => n.item.to).filter(Boolean)), [navItems])
+  const featureResults = useMemo<Result[]>(() => {
+    if (!q.trim()) return []
+    return FEATURES.filter((f) => reachable.has(f.to) || f.to === "/")
+      .map((f) => ({ f, score: rank(`${t(f.label)} ${f.label} ${f.where} ${f.keywords.join(" ")}`, q) }))
+      .filter((r) => r.score !== null)
+      .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
+      .slice(0, 6)
+      .map(({ f }) => ({
+        id: `feat:${f.label}`,
+        label: t(f.label),
+        hint: t(f.where),
+        icon: Sparkles,
+        onSelect: () => {
+          setOpen(false)
+          navigate(f.to)
+        },
+      }))
+  }, [q, reachable, navigate, t])
+
+  const settingResults = useMemo<Result[]>(() => {
+    if (!q.trim()) return []
+    return settingsIdx
+      .map((x) => ({ x, score: rank(x.words, q) }))
+      .filter((r) => r.score !== null)
+      .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
+      .slice(0, 6)
+      .map(({ x }) => ({
+        id: x.id,
+        label: t(x.label),
+        hint: `${t("Setting")} · ${t(x.where)}`,
+        icon: Settings2,
+        onSelect: () => {
+          setOpen(false)
+          navigate(x.to)
+        },
+      }))
+  }, [q, settingsIdx, navigate, t])
+
+  // The apps themselves: "revenue", "housekeeping" open that module.
+  const moduleResults = useMemo<Result[]>(() => {
+    if (!q.trim()) return []
+    return visibleApps(roles)
+      .map((a) => ({ a, score: rank(`${t(a.name)} ${a.name} ${a.description} module app`, q) }))
+      .filter((r) => r.score !== null && r.a.items.some((i) => i.to))
+      .sort((x, y) => (x.score ?? 0) - (y.score ?? 0))
+      .slice(0, 3)
+      .map(({ a }) => ({
+        id: `app:${a.id}`,
+        label: t(a.name),
+        hint: `${t("Module")} · ${t(a.description)}`,
+        icon: LayoutGrid,
+        onSelect: () => {
+          setOpen(false)
+          navigate(a.items.find((i) => i.to)!.to!)
+        },
+      }))
+  }, [q, roles, navigate, t])
 
   const guestResults = useMemo<Result[]>(
     () =>
@@ -235,6 +351,32 @@ export function CommandPalette() {
     [reservations, navigate, t],
   )
 
+  // check-out shortcut: "check out" (or a room / guest) finds the in-house
+  // stay and opens the guided check-out sheet on Today
+  const wantsCheckout = /check\s*-?\s*out/i.test(q)
+  const checkoutResults = useMemo<Result[]>(() => {
+    const stays = reservations.filter((r) => r.status === "Checked In")
+    const out: Result[] = stays.map((r) => ({
+      id: `checkout:${r.name}`,
+      label: t("Check out {guest}", { guest: r.guest_name || r.name }),
+      hint: `${r.name}${r.room ? ` · ${r.room}` : ""}`,
+      icon: LogOut,
+      onSelect: () => {
+        setOpen(false)
+        navigate("/", { state: { checkout: r.name } })
+      },
+    }))
+    if (!out.length && wantsCheckout)
+      out.push({
+        id: "checkout:help",
+        label: t("Check out a guest"),
+        hint: t("Type the room number or the guest's name"),
+        icon: LogOut,
+        onSelect: () => setQ(""),
+      })
+    return out
+  }, [reservations, wantsCheckout, navigate, t])
+
   const invoiceResults = useMemo<Result[]>(
     () =>
       invoices.map((f) => ({
@@ -252,7 +394,7 @@ export function CommandPalette() {
 
   const helpResults = useMemo<Result[]>(
     () =>
-      fuzzy(`guides guided tours walkthrough help ${t("Guided tours")}`, q)
+      rank(`${t("Guided tours")} guides guided tours walkthrough help`, q) !== null
         ? [
             {
               id: "help:guides",
@@ -270,10 +412,14 @@ export function CommandPalette() {
   )
 
   const groups: { title: string; items: Result[] }[] = [
+    { title: t("Check out"), items: checkoutResults },
     { title: t("Reservations"), items: reservationResults },
     { title: t("Invoices"), items: invoiceResults },
     { title: t("Guests"), items: guestResults },
-    { title: t("Navigate"), items: navResults },
+    { title: t("Screens"), items: navResults },
+    { title: t("Features"), items: featureResults },
+    { title: t("Settings"), items: settingResults },
+    { title: t("Modules"), items: moduleResults },
     { title: t("Help"), items: helpResults },
   ]
   // one flat, ordered list for arrow-key navigation across all groups
@@ -314,7 +460,7 @@ export function CommandPalette() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={t("Search a guest, phone, booking, invoice - or jump to any screen…")}
+            placeholder={t("Search guests, bookings, invoices, screens, features, settings…")}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400"
           />
           {searching ? (
@@ -334,7 +480,7 @@ export function CommandPalette() {
               ) : (
                 <>
                   {t("Search a guest, phone, booking or invoice.")}{" "}
-                  <span className="text-zinc-400">{t("Or jump to any screen.")}</span>
+                  <span className="text-zinc-400">{t("Or a screen, a feature (cash drop, night audit, BAR rates) or a setting.")}</span>
                 </>
               )}
             </div>

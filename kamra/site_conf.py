@@ -18,6 +18,12 @@ KEYS = (
 	"public_max_days_ahead",
 	"razorpay_signup_url",
 	"cashfree_signup_url",
+	"channel",
+	"build",
+	"strict_property_scope",
+	"webhooks_allow_http",
+	"webhooks_allow_private",
+	"verify_enabled",
 )
 
 

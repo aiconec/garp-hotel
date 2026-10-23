@@ -1,7 +1,8 @@
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useOutletContext } from "react-router-dom"
 import { Store } from "lucide-react"
 
 import { useAuth } from "../lib/auth"
+import type { ShellContext } from "../AppShell"
 import { APP_TILE, visibleApps, type AppDef } from "../lib/apps"
 import { cn } from "../lib/utils"
 import { useT } from "../lib/i18n"
@@ -12,7 +13,10 @@ export default function AppLauncher() {
   const { t } = useT()
   const { roles } = useAuth()
   const navigate = useNavigate()
-  const apps = visibleApps(roles)
+  // only the apps this property runs (enabled_modules, empty = all) -
+  // the same rule as the sidebar and the MCP tool list
+  const { modules } = useOutletContext<ShellContext>()
+  const apps = visibleApps(roles, modules)
   const canMarket = ["Hotel Admin", "System Manager", "Administrator"].some(
     (r) => roles.includes(r),
   )

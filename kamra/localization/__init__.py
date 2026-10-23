@@ -29,6 +29,7 @@ and the accessors refuse rather than fall back to another country's:
 import importlib
 
 import frappe
+from kamra.site_conf import site_conf
 
 
 def pack_for(property: str | None = None):
@@ -81,10 +82,28 @@ def pack_for_country(country: str):
 
 
 # ── optional pack behaviour, with defaults ───────────────────────────────
+#
+#   services_tax_rate(property) -> float   (laundry & other guest services)
 # A pack that predates these keeps working: each accessor falls back to
 # something correct-but-plain, so adding a country never means editing the
 # invoice printer.
 
+
+def services_tax_rate(pack, property: str | None) -> float:
+	"""The tax rate on a guest service such as laundry. A pack can say so
+	(India: 18% GST on services); otherwise the pack's standard rate - the
+	one its F&B rate already resolves to in every flat-VAT country."""
+	fn = getattr(pack, "services_tax_rate", None)
+	if fn:
+		return float(fn(property))
+	return float(pack.fnb_tax_rate(property))
+
+
+def money_text(property: str | None, amount) -> str:
+	"""An amount in the property's currency for server-written text (the
+	activity log, alerts) - never a hardcoded rupee sign. Upstream's name for
+	format_money, which writes it the way the property's country does."""
+	return format_money(property, amount)
 
 def service_code_for(pack, prop_doc, charge_type: str | None = None):
 	"""The tax service code for ONE line. A bill that mixes a room night,
@@ -174,6 +193,12 @@ def minor_id_kept(pack, nationality: str | None) -> bool:
 	home = (getattr(pack, "DEFAULT_NATIONALITY", "") or "").strip().casefold()
 	nat = (nationality or "").strip().casefold()
 	return bool(nat) and nat != home
+
+
+def registration_card_required(pack) -> bool:
+	"""Does registration law here expect a signed registration card (GRC)
+	for every stay? The default for the guided check-in's GRC step."""
+	return bool(getattr(pack, "REGISTRATION_CARD_REQUIRED", False))
 
 
 def privacy_terms(pack) -> dict:
@@ -305,6 +330,13 @@ def verify_guest_id(pack, property: str, guest: str, id_type: str,
 	if not fn:
 		_not_offered(frappe._("Guest ID verification"))
 	return fn(property, guest, id_type, consent)
+
+
+def verify_released() -> bool:
+	"""Kamra Verify isn't released yet: its hub service isn't live. Until it
+	is, every Verify button, the Settings page and the endpoints stay off
+	unless a site opts in with `kamra_verify_enabled: 1` in site config."""
+	return bool(site_conf("verify_enabled"))
 
 
 def integrations(pack) -> dict:

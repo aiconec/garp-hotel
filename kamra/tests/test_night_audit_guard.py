@@ -61,20 +61,20 @@ class TestNightAuditCalendarGuard(unittest.TestCase):
 
 	def test_scheduled_run_leaves_a_day_that_has_not_ended(self):
 		self._set_business_date(TODAY)
-		out = folio.run_night_audit(PROPERTY, scheduled=True)
+		out = folio.run_night_audit(PROPERTY, mode="scheduled")
 		self.assertTrue(out.get("skipped"))
 		self.assertEqual(self._business_date(), TODAY)
 
 	def test_scheduled_run_after_an_evening_audit_does_nothing(self):
 		self._set_business_date(add_days(TODAY, -1))
 		folio.run_night_audit(PROPERTY)  # the desk, last night
-		out = folio.run_night_audit(PROPERTY, scheduled=True)  # 03:00 today
+		out = folio.run_night_audit(PROPERTY, mode="scheduled")  # 03:00 today
 		self.assertTrue(out.get("skipped"))
 		self.assertEqual(self._business_date(), TODAY)
 
 	def test_scheduled_run_closes_yesterday(self):
 		self._set_business_date(add_days(TODAY, -1))
-		out = folio.run_night_audit(PROPERTY, scheduled=True)
+		out = folio.run_night_audit(PROPERTY, mode="scheduled")
 		self.assertEqual(out["business_date"], add_days(TODAY, -1))
 		self.assertEqual(self._business_date(), TODAY)
 
@@ -84,10 +84,10 @@ class TestNightAuditCalendarGuard(unittest.TestCase):
 		out = folio.run_night_audit(PROPERTY, business_date=TODAY)
 		self.assertTrue(out.get("already_ran"))
 
-	def test_closing_a_past_day_never_rewinds_the_business_date(self):
+	def test_closing_a_past_day_is_refused_and_never_rewinds(self):
 		self._set_business_date(TODAY)
-		out = folio.run_night_audit(PROPERTY, business_date=add_days(TODAY, -5))
-		self.assertEqual(out["next_business_date"], TODAY)
+		with self.assertRaises(frappe.ValidationError):
+			folio.run_night_audit(PROPERTY, business_date=add_days(TODAY, -5))
 		self.assertEqual(self._business_date(), TODAY)
 
 	def test_desk_cannot_close_another_day_through_the_api(self):
@@ -101,7 +101,7 @@ class TestNightAuditCalendarGuard(unittest.TestCase):
 			                "roles": [{"role": "Front Desk"}]}).insert(ignore_permissions=True)
 		frappe.set_user(desk)
 		try:
-			with self.assertRaises(frappe.PermissionError):
+			with self.assertRaises((frappe.ValidationError, frappe.PermissionError)):
 				api.run_night_audit(PROPERTY, business_date=add_days(TODAY, -5))
 		finally:
 			frappe.set_user("Administrator")

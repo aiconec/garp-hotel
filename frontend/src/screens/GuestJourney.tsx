@@ -9,16 +9,20 @@ import { Download,
   Mail,
   MapPin,
   Merge,
+  Ban,
   Phone,
+  ShieldCheck,
   ShieldOff,
   Star,
   XCircle,
 } from "lucide-react"
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom"
-import { call, guestSearch, type GuestHit } from "../lib/api"
+import { call, guestSearch, setGuestBlacklist, type GuestHit } from "../lib/api"
+import { useAuth } from "../lib/auth"
 import { serverError, updateResource } from "../lib/resource"
 import type { ShellContext } from "../AppShell"
 import EditableNationality from "../components/EditableNationality"
+import GuestDocuments, { type GuestDocs } from "../components/GuestDocuments"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import {
@@ -28,7 +32,6 @@ import {
   CardTitle,
 } from "../components/ui/card"
 import { cn } from "../lib/utils"
-import { toFullPath } from "../lib/routing"
 import { cur, moneyLocale } from "../lib/money"
 
 /** Guest profile hub - the person is the center, stays hang off them.
@@ -60,6 +63,9 @@ interface Journey {
     nationality: string | null
     id_type: string | null
     id_number: string | null
+    id_place_of_issue: string | null
+    id_issue_date: string | null
+    id_expiry_date: string | null
     blacklisted: 0 | 1
     blacklist_reason: string | null
     address: string
@@ -72,6 +78,7 @@ interface Journey {
     lifetime_value: number
     first_seen: string
   }
+  documents: GuestDocs
   reservations: ResRow[]
   timeline: {
     ts: string
@@ -250,6 +257,97 @@ function MergePanel(props: {
   )
 }
 
+/** Blacklist / lift the blacklist. Hotel Admin only (the endpoint enforces
+ *  it too); a reason is required both ways and goes to the activity log. */
+const BLACKLIST_ROLES = ["Hotel Admin", "System Manager", "Administrator"]
+
+function BlacklistControl(props: {
+  guest: string
+  blacklisted: boolean
+  onDone: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const adding = !props.blacklisted
+
+  async function save() {
+    setBusy(true)
+    setErr(null)
+    try {
+      await setGuestBlacklist(props.guest, adding, reason.trim())
+      setOpen(false)
+      setReason("")
+      props.onDone()
+    } catch (e) {
+      setErr(serverError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open)
+    return (
+      <div>
+        <Button
+          variant="outline"
+          className={cn(adding && "text-rose-600")}
+          onClick={() => setOpen(true)}
+        >
+          {adding ? (
+            <Ban className="size-4" aria-hidden />
+          ) : (
+            <ShieldCheck className="size-4" aria-hidden />
+          )}
+          {adding ? "Blacklist guest" : "Remove from blacklist"}
+        </Button>
+        <p className="mt-1.5 text-xs text-zinc-400">
+          {adding
+            ? "Blocks new bookings for this guest until a Hotel Admin lifts it."
+            : "New bookings for this guest will be allowed again."}
+        </p>
+      </div>
+    )
+
+  return (
+    <div className="space-y-2 rounded-lg border border-zinc-200 p-3">
+      <label className="block text-sm font-medium text-zinc-700">
+        {adding ? "Why is this guest being blacklisted?" : "Why is the blacklist being lifted?"}
+      </label>
+      <textarea
+        className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+        rows={2}
+        value={reason}
+        autoFocus
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Reason (required)"
+      />
+      {err && <p className="text-sm text-rose-600">{err}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          className={cn(adding && "bg-rose-600 hover:bg-rose-700")}
+          disabled={busy || !reason.trim()}
+          onClick={save}
+        >
+          {busy ? "Saving…" : adding ? "Blacklist" : "Remove from blacklist"}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={() => {
+            setOpen(false)
+            setReason("")
+            setErr(null)
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function StatCell(props: { label: string; value: string }) {
   return (
     <div>
@@ -265,6 +363,8 @@ export default function GuestJourney() {
   const { name } = useParams()
   const navigate = useNavigate()
   const { canBook, openBooking } = useOutletContext<ShellContext>()
+  const { roles } = useAuth()
+  const canBlacklist = BLACKLIST_ROLES.some((r) => roles.includes(r))
   const [data, setData] = useState<Journey | null>(null)
   const [merging, setMerging] = useState(false)
   const [confirmAnon, setConfirmAnon] = useState(false)
@@ -422,12 +522,12 @@ export default function GuestJourney() {
                   {r.company && <Badge tone="zinc">{r.company}</Badge>}
                   <span className="ml-auto flex items-center gap-3">
                     <span>{cur()}{inr(r.amount_after_tax)}</span>
-                    <a
-                      href={toFullPath(`/grc/${encodeURIComponent(r.name)}`)}
+                    <Link
+                      to={`/grc/${encodeURIComponent(r.name)}`}
                       className="font-medium text-brand-700 hover:underline"
                     >
                       GRC
-                    </a>
+                    </Link>
                   </span>
                 </li>
               ))}
@@ -499,6 +599,10 @@ export default function GuestJourney() {
         </Card>
 
         <div className="space-y-4">
+          {/* key on the saved values so the form resets after a save */}
+          <GuestDocuments
+            key={`${guest.id_type}|${guest.id_number}|${guest.id_place_of_issue}|${guest.id_issue_date}|${guest.id_expiry_date}`}
+            guestId={guest.name} docs={data.documents} onSaved={load} />
           <Card data-tour="gj-notes">
             <CardHeader>
               <CardTitle>Notes & preferences</CardTitle>
@@ -553,6 +657,13 @@ export default function GuestJourney() {
               <CardTitle>Profile actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {canBlacklist && (
+                <BlacklistControl
+                  guest={guest.name}
+                  blacklisted={Boolean(guest.blacklisted)}
+                  onDone={load}
+                />
+              )}
               {merging ? (
                 <MergePanel
                   survivor={guest.name}

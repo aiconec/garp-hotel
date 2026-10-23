@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { Link } from "react-router-dom"
 import { ArrowUpRight, ArrowDownRight } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { Sparkline } from "./sparkline"
@@ -7,6 +8,10 @@ import { Sparkline } from "./sparkline"
  * One headline metric in the front-desk KPI strip: a soft-green icon chip,
  * a quiet label, the big number, and either a sparkline or a progress bar,
  * with an optional delta vs. a prior period.
+ *
+ * Layout rule: the value is never beside a 96px spark on a 6-up grid - that
+ * used to draw the chart through the digits. Spark sits on its own row under
+ * the number; sub text is full-width below that.
  */
 export function StatCard({
   icon,
@@ -19,6 +24,7 @@ export function StatCard({
   delta,
   sub,
   accent,
+  to,
   className,
 }: {
   icon: ReactNode
@@ -31,18 +37,15 @@ export function StatCard({
   delta?: { value: string; dir?: "up" | "down" } // e.g. { value: "20% vs yesterday", dir: "up" }
   sub?: ReactNode
   accent?: boolean
+  /** When set, the whole card navigates here (e.g. Open tasks → HK). */
+  to?: string
   className?: string
 }) {
   const down = delta?.dir === "down"
   // amounts like Rp125.400.000 scale down to the card; short counts keep full size
   const long = typeof value === "string" && value.length > 8
-  return (
-    <div
-      className={cn(
-        "@container flex min-w-0 flex-col rounded-xl border border-zinc-200 bg-white p-4",
-        className,
-      )}
-    >
+  const inner = (
+    <>
       <div className="flex items-center gap-2">
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
           {icon}
@@ -53,8 +56,8 @@ export function StatCard({
       </div>
       {/* Long amounts (Rp12.500.000) shrink with the card instead of running
           under the sparkline, which drops below the number when both don't fit. */}
-      <div className="mt-2.5 flex flex-wrap items-end justify-between gap-x-2 gap-y-1">
-        <div className="min-w-0">
+      <div className="mt-2.5 flex flex-wrap items-end justify-between gap-x-2 gap-y-1.5">
+        <div className="min-w-0 max-w-full">
           <div
             className={cn(
               "whitespace-nowrap font-semibold tracking-tight tabular-nums",
@@ -64,16 +67,16 @@ export function StatCard({
           >
             {value}
           </div>
-          {sub ? (
-            <div className="mt-0.5 text-xs text-zinc-400">{sub}</div>
-          ) : null}
         </div>
         {spark ? (
-          <div className="shrink-0">
+          <div className="max-w-full shrink-0">
             <Sparkline data={spark} color={sparkColor} />
           </div>
         ) : null}
       </div>
+      {/* the chart drops under the number when the card is too narrow for both, never over it */}
+      {/* full card width, so it never wraps into a thin column beside the chart */}
+      {sub ? <div className="mt-1 text-xs text-zinc-400">{sub}</div> : null}
 
       {progress !== undefined ? (
         <div className="mt-3">
@@ -104,6 +107,21 @@ export function StatCard({
           <span className="text-zinc-500">{delta.value}</span>
         </div>
       ) : null}
-    </div>
+    </>
   )
+
+  const shell = cn(
+    "@container flex min-w-0 flex-col rounded-xl border border-zinc-200 bg-white p-4",
+    to && "transition-colors hover:border-brand-300 hover:bg-brand-50/30",
+    className,
+  )
+
+  if (to) {
+    return (
+      <Link to={to} className={shell}>
+        {inner}
+      </Link>
+    )
+  }
+  return <div className={shell}>{inner}</div>
 }

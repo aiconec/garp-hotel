@@ -23,7 +23,8 @@ def _day_stats(property: str, date: str, total_rooms: int) -> dict:
 		        'Meal Plan', 'Minibar') THEN fc.amount ELSE 0 END), 0)
 		        AS fnb_revenue,
 		  COALESCE(SUM(CASE WHEN fc.charge_type NOT IN ('Room',
-		        'Food & Beverage', 'Meal Plan', 'Minibar', 'Discount')
+		        'Food & Beverage', 'Meal Plan', 'Minibar', 'Discount',
+		        'Opening Balance')
 		        THEN fc.amount ELSE 0 END), 0) AS other_revenue
 		FROM `tabFolio Charge` fc
 		JOIN `tabFolio` f ON fc.parent = f.name
@@ -80,7 +81,8 @@ def void_allowance_report(
 		[
 			"action_type",
 			"in",
-			["void_charge", "post_allowance", "cancel_invoice"],
+			["void_charge", "post_allowance", "cancel_invoice",
+			 "pos_void_item", "pos_cancel_order"],
 		],
 	]
 	if from_date:
@@ -90,7 +92,8 @@ def void_allowance_report(
 	rows = frappe.get_all(
 		"Agent Action Log",
 		filters=filters,
-		fields=["creation", "actor", "action_type", "reference_name", "rationale"],
+		fields=["creation", "actor", "action_type", "reference_doctype",
+		        "reference_name", "rationale", "approver"],
 		order_by="creation desc",
 		limit_page_length=0,
 	)
@@ -98,13 +101,20 @@ def void_allowance_report(
 		"void_charge": "Void",
 		"post_allowance": "Allowance",
 		"cancel_invoice": "Invoice cancelled",
+		# restaurant bills: a voided line, or a whole bill cancelled
+		"pos_void_item": "POS void",
+		"pos_cancel_order": "POS bill cancelled",
 	}
+	pos = {"pos_void_item", "pos_cancel_order"}
 	return [
 		{
 			"when": str(r.creation),
 			"actor": r.actor,
 			"action": label.get(r.action_type, r.action_type),
-			"folio": r.reference_name,
+			# a folio, or the POS bill for the restaurant rows
+			"folio": None if r.action_type in pos else r.reference_name,
+			"pos_order": r.reference_name if r.action_type in pos else None,
+			"approver": r.approver,
 			"detail": r.rationale,
 		}
 		for r in rows
@@ -112,7 +122,7 @@ def void_allowance_report(
 
 
 @frappe.whitelist()
-@require_roles("Finance", "Front Desk", "Hotel Agent")
+@require_roles("Finance", "Front Desk", "Night Auditor", "Hotel Agent")
 def manager_flash(property: str, date: str | None = None):
 	"""The daily flash: yesterday's performance, month to date, today's
 	movement, collections by mode, and the 7-day outlook."""
@@ -198,26 +208,71 @@ def _month_bounds(period: str):
 @require_roles("Finance", "Revenue Manager", "Hotel Agent")
 def budget_vs_actual(property: str, period: str | None = None):
 	"""Monthly target vs actual: room revenue, occupancy %, ADR, RevPAR - with
-	variance. period is 'YYYY-MM' (defaults to the current month)."""
-	from frappe.utils import nowdate
+	variance. period is 'YYYY-MM' (defaults to the current month).
+
+	"Actual" is posted money: Room charges on folios, dated inside the month.
+	A room night reaches a folio when End of Day (night audit) posts it, so a
+	stay in-house tonight counts once its night is audited - not before.
+	Occupancy and RevPAR divide by the room nights elapsed so far (to the
+	business date), not the whole month, so a month-to-date figure compares
+	with a monthly occupancy target. `on_books_nights` / `unposted_nights`
+	say how many sold nights in the same window are still waiting for End
+	of Day, so a zero is explained rather than mysterious."""
+	from frappe.utils import date_diff, nowdate
 
 	period = period or nowdate()[:7]
 	start, nxt, days = _month_bounds(period)
 	total_rooms = frappe.db.count("Room", {"property": property}) or 0
-	room_nights = total_rooms * days
+
+	# the nights that have happened: up to the business date (the night
+	# being audited next), else through today
+	business = frappe.db.get_value("Property", property, "business_date") \
+		if frappe.db.has_column("Property", "business_date") else None
+	upto = str(getdate(business)) if business else str(add_days(nowdate(), 1))
+	window_end = min(max(upto, start), nxt)
+	elapsed = date_diff(window_end, start)
+	room_nights = total_rooms * elapsed
 
 	agg = frappe.db.sql(
 		"""
 		SELECT
 		  COUNT(DISTINCT CASE WHEN fc.charge_type='Room'
 		        THEN CONCAT(COALESCE(fc.reservation,f.reservation),'|',fc.posting_date) END) AS rooms_sold,
-		  COALESCE(SUM(CASE WHEN fc.charge_type='Room' THEN fc.amount ELSE 0 END),0) AS room_revenue
+		  COALESCE(SUM(CASE WHEN fc.charge_type='Room' THEN fc.amount ELSE 0 END),0) AS room_revenue,
+		  MAX(CASE WHEN fc.charge_type='Room' THEN fc.posting_date END) AS posted_through
 		FROM `tabFolio Charge` fc JOIN `tabFolio` f ON fc.parent=f.name
 		WHERE f.property=%(p)s AND fc.posting_date>=%(s)s AND fc.posting_date<%(n)s
 		""",
 		{"p": property, "s": start, "n": nxt}, as_dict=True)[0]
 	sold = int(agg.rooms_sold or 0)
 	room_rev = float(agg.room_revenue or 0)
+	# sold nights in the same elapsed window, whether posted yet or not -
+	# and, stay by stay, how many of them End of Day hasn't posted. Per stay,
+	# not house totals: a no-show or cancellation fee posts a Room charge for
+	# a stay that isn't on the books, and must not hide another stay's gap.
+	stays = frappe.db.sql(
+		"""
+		SELECT name, DATEDIFF(LEAST(check_out_date, %(e)s),
+		                      GREATEST(check_in_date, %(s)s)) AS nights
+		FROM `tabReservation`
+		WHERE property=%(p)s
+		  AND status IN ('Confirmed', 'Checked In', 'Checked Out')
+		  AND check_in_date < %(e)s AND check_out_date > %(s)s
+		""",
+		{"p": property, "s": start, "e": window_end}, as_dict=True)
+	on_books = sum(int(r.nights or 0) for r in stays)
+	posted_by_stay = dict(frappe.db.sql(
+		"""
+		SELECT COALESCE(fc.reservation, f.reservation) AS res,
+		       COUNT(DISTINCT fc.posting_date)
+		FROM `tabFolio Charge` fc JOIN `tabFolio` f ON fc.parent=f.name
+		WHERE f.property=%(p)s AND fc.charge_type='Room'
+		  AND fc.posting_date>=%(s)s AND fc.posting_date<%(e)s
+		GROUP BY res
+		""",
+		{"p": property, "s": start, "e": window_end})) if stays else {}
+	unposted = sum(max(0, int(r.nights or 0) - int(posted_by_stay.get(r.name) or 0))
+	               for r in stays)
 
 	actual = {
 		"room_revenue": round(room_rev, 0),
@@ -245,9 +300,14 @@ def budget_vs_actual(property: str, period: str | None = None):
 			"variance": round(a - t, 1),
 			"attainment": round(100 * a / t, 0) if t else None,
 		})
-	return {"period": period, "days_elapsed": min(
-		days, max(0, __import__("frappe").utils.date_diff(nowdate(), start) + 1)),
-		"total_days": days, "rows": rows, "has_budget": bool(b)}
+	return {"period": period, "days_elapsed": elapsed,
+	        "total_days": days, "rows": rows, "has_budget": bool(b),
+	        "basis": "posted",
+	        "posted_nights": sold,
+	        "posted_through": str(agg.posted_through) if agg.posted_through else None,
+	        "on_books_nights": on_books,
+	        "unposted_nights": unposted,
+	        "elapsed_room_nights": room_nights}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -310,8 +370,8 @@ def sla_report(property: str, from_date: str, to_date: str):
 	breached if it was resolved after due_by, or is still open past due_by."""
 	tickets = frappe.db.sql(
 		"""
-		SELECT name, category, priority, status, breached,
-		       creation, due_by, resolved_on
+		SELECT name, subject, category, priority, status, breached,
+		       creation, due_by, resolved_on, resolved_by, assigned_to_user
 		FROM `tabService Ticket`
 		WHERE property=%(p)s AND DATE(creation)>=%(f)s AND DATE(creation)<=%(t)s
 		""",
@@ -334,8 +394,13 @@ def sla_report(property: str, from_date: str, to_date: str):
 		end = get_datetime(tk.resolved_on) if tk.resolved_on else now
 		return end > get_datetime(tk.due_by)
 
+	# a ticket is resolved when it is Resolved or Closed - one rule for the
+	# headline and every breakdown. A ticket closed without passing through
+	# Resolved has no resolved_on, so it counts as resolved but adds no
+	# time to the averages.
+	done = ("Resolved", "Closed")
 	total = len(tickets)
-	resolved = [t for t in tickets if t.status in ("Resolved", "Closed")]
+	resolved = [t for t in tickets if t.status in done]
 	breached = [t for t in tickets if is_breached(t)]
 	res_mins = [m for m in (resolve_mins(t) for t in resolved) if m is not None]
 
@@ -348,10 +413,11 @@ def sla_report(property: str, from_date: str, to_date: str):
 			row["count"] += 1
 			if is_breached(t):
 				row["breached"] += 1
-			m = resolve_mins(t)
-			if m is not None:
+			if t.status in done:
 				row["resolved"] += 1
-				row["mins"].append(m)
+				m = resolve_mins(t)
+				if m is not None:
+					row["mins"].append(m)
 		out = []
 		for row in g.values():
 			mins = row.pop("mins")
@@ -371,9 +437,50 @@ def sla_report(property: str, from_date: str, to_date: str):
 			continue
 		overdue.append({
 			"name": t.name, "category": t.category, "priority": t.priority,
+			"subject": t.subject, "assigned_to_user": t.assigned_to_user,
 			"overdue_hours": round(over_min / 60, 1),
 		})
 	overdue.sort(key=lambda r: r["overdue_hours"], reverse=True)
+
+	# who solved them, and the whole open backlog - not only this window's
+	solver: dict[str, dict] = {}
+	for t in resolved:
+		who = t.resolved_by or ""
+		row = solver.setdefault(who, {"user": who or None, "resolved": 0, "breached": 0, "mins": []})
+		row["resolved"] += 1
+		if is_breached(t):
+			row["breached"] += 1
+		m = resolve_mins(t)
+		if m is not None:
+			row["mins"].append(m)
+	people = {u.name: u.full_name for u in frappe.get_all(
+		"User", filters={"name": ["in", [k for k in solver if k]]}, fields=["name", "full_name"])} if solver else {}
+	by_resolver = []
+	for row in solver.values():
+		mins = row.pop("mins")
+		row["name"] = people.get(row["user"]) or row["user"] or "Not recorded"
+		row["avg_resolve_mins"] = round(sum(mins) / len(mins)) if mins else None
+		by_resolver.append(row)
+	by_resolver.sort(key=lambda x: x["resolved"], reverse=True)
+
+	open_all = frappe.db.sql(
+		"""SELECT name, subject, category, priority, status, creation, due_by, assigned_to_user
+		   FROM `tabService Ticket` WHERE property=%s AND status IN ('Open','In Progress')
+		   ORDER BY creation ASC""", property, as_dict=True)
+	buckets = [("Under 1 day", 0, 1), ("1 to 3 days", 1, 3), ("3 to 7 days", 3, 7), ("Over 7 days", 7, 10**6)]
+	aging = []
+	for label, lo, hi in buckets:
+		n = sum(1 for t in open_all
+		        if lo <= time_diff_in_seconds(now, get_datetime(t.creation)) / 86400 < hi)
+		aging.append({"label": label, "count": n})
+	asg = {u.name: u.full_name for u in frappe.get_all(
+		"User", filters={"name": ["in", [t.assigned_to_user for t in open_all if t.assigned_to_user] or [""]]},
+		fields=["name", "full_name"])}
+	oldest_open = [{
+		"name": t.name, "subject": t.subject, "category": t.category, "priority": t.priority,
+		"status": t.status, "age_days": round(time_diff_in_seconds(now, get_datetime(t.creation)) / 86400, 1),
+		"assigned_to_user": t.assigned_to_user, "assigned_to_name": asg.get(t.assigned_to_user),
+	} for t in open_all[:15]]
 
 	return {
 		"from": from_date, "to": to_date,
@@ -386,4 +493,9 @@ def sla_report(property: str, from_date: str, to_date: str):
 		"by_category": group_by("category"),
 		"by_priority": group_by("priority"),
 		"overdue": overdue,
+		"by_resolver": by_resolver,
+		"aging": aging,
+		"oldest_open": oldest_open,
+		"open_total": len(open_all),
+		"unassigned_open": sum(1 for t in open_all if not t.assigned_to_user),
 	}

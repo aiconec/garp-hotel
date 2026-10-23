@@ -65,6 +65,9 @@ def build() -> dict:
 
 	_upsert("Property", {"property_name": PROPERTY}, {
 		"property_name": PROPERTY, "city": "Testville", "state": "Karnataka",
+		# the fork defaults a blank country to Indonesia; these tests read
+		# India's GST paperwork
+		"country": "India", "currency": "INR",
 		"gst_mode": "Slab", "gst_slab_threshold": 7500,
 		"gst_rate_low": 5, "gst_rate_high": 18, "gstin": "29AABCU9603R1ZM",
 	})

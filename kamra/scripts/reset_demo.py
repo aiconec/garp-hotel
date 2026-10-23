@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import frappe
 
+from kamra.install import AGENT_EMAIL, ensure_agent_identity
 from kamra.scripts.seed_users import USERS
 
 # Public playgrounds only. Local benches with demo mode are allowed so
@@ -27,9 +28,13 @@ PLAYGROUND_SITES = {
 	"nightly.kamrapms.com",
 }
 
+# AGENT_EMAIL is the governed writer behind /book, guest check-in and
+# OTA webhooks (public_api.set_user). Deleting it breaks website
+# bookings until the next migrate, so it survives like Administrator.
 KEEP_USERS = {
 	"Administrator",
 	"Guest",
+	AGENT_EMAIL,
 	*(spec["email"] for spec in USERS),
 }
 
@@ -91,9 +96,19 @@ def reset() -> dict:
 	summary["wiped"]["core"] = _wipe_core()
 	summary["wiped"]["users"] = _wipe_extra_users()
 	_reset_demo_passwords()
+	# heals sites where an older reset already deleted the agent, and
+	# re-enables it / restores its role if someone tampered with it
+	ensure_agent_identity()
 
 	frappe.clear_cache()
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit -- reset script runs outside the request cycle
+
+	# in_import was only for the wipe. Left on, Document.insert skips
+	# _set_defaults and every seeded row lands without its doctype
+	# defaults (blank room status, folio type, GST rates, booking engine
+	# off ...). seed_demo guards this too; clear it here so nothing that
+	# runs after the wipe inherits it.
+	frappe.flags.in_import = False
 
 	# seed_demo is idempotent *if* the property still exists; we just
 	# deleted it, so this rebuilds rooms, guests, stays and showcase.

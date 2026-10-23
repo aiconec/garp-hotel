@@ -22,7 +22,94 @@ import {
 import { serverError } from "../lib/resource"
 import { moneyLocale } from "../lib/money"
 // older sites logged the assistant as "Kamra Agent"
-import { rebrand } from "../lib/brand"
+import { BRAND_AGENT, rebrand } from "../lib/brand"
+import { useAuth } from "../lib/auth"
+import { useT } from "../lib/i18n"
+
+interface SignInRow {
+  name: string
+  creation: string
+  user: string
+  full_name: string
+  operation: "Login" | "Logout"
+  status: string
+}
+
+/** Roles that may see staff sign-ins (Frappe's Login / Logout records). */
+const SIGN_IN_ROLES = ["Hotel Admin", "Finance", "System Manager", "Administrator"]
+
+/** Staff sign-ins: who signed in or out, when, and whether it worked. */
+function SignInsTable({ property }: { property: string }) {
+  const { t } = useT()
+  const [rows, setRows] = useState<SignInRow[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
+  const PAGE = 50
+  useEffect(() => {
+    setRows(null)
+    call<SignInRow[]>("kamra.agents_api.staff_sign_ins", { property, limit: PAGE, start: page * PAGE })
+      .then((r) => {
+        setRows(r)
+        setError(null)
+      })
+      .catch((e) => setError(serverError(e)))
+  }, [property, page])
+  if (error)
+    return (
+      <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+    )
+  if (!rows) return <LoadingRow />
+  return (
+    <div className="space-y-3">
+      {rows.length === 0 ? (
+        <p className="py-8 text-center text-sm text-zinc-400">{t("No sign-ins recorded yet.")}</p>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-200 text-start text-xs font-medium uppercase tracking-wider text-zinc-500">
+                <th className="px-3 py-2 text-start">{t("When")}</th>
+                <th className="px-3 py-2 text-start">{t("Who")}</th>
+                <th className="px-3 py-2 text-start">{t("What")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {rows.map((r) => (
+                <tr key={r.name}>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs text-zinc-500">{fmtWhen(r.creation)}</td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className="font-medium">{r.full_name}</span>
+                    <span className="ms-1 text-xs text-zinc-400">{r.user}</span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <Badge tone={r.status === "Success" ? (r.operation === "Login" ? "green" : "zinc") : "rose"}>
+                      {r.status !== "Success"
+                        ? t("Sign-in failed")
+                        : r.operation === "Login"
+                          ? t("Signed in")
+                          : t("Signed out")}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="flex items-center justify-between text-sm text-zinc-500">
+        <span>{t("Page {n}", { n: page + 1 })}</span>
+        <div className="flex gap-2">
+          <Button variant="outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+            {t("Prev")}
+          </Button>
+          <Button variant="outline" disabled={rows.length < PAGE} onClick={() => setPage((p) => p + 1)}>
+            {t("Next")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 
 
@@ -36,44 +123,46 @@ const statusTone: Record<string, "zinc" | "sky" | "amber" | "rose" | "green"> = 
 }
 
 export default function Agents() {
+  const { t } = useT()
   const property = getCurrentProperty()
   const [panel, setPanel] = useState<"none" | "connect">("none")
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="size-5 text-brand-600" aria-hidden />
-          <h1 className="text-xl font-semibold tracking-tight">BizConnect.id Hotel Agent</h1>
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Sparkles className="size-5 text-brand-600" aria-hidden />
+            <h1 className="text-xl font-semibold tracking-tight">{BRAND_AGENT}</h1>
+          </div>
+          <p className="mt-0.5 text-sm text-zinc-500">
+            {t("Chat here, or connect Claude. Either way it acts as you, within your role.")}
+          </p>
         </div>
-        <p className="text-sm text-zinc-500">
-          Chat in the console, or connect Claude — it acts as you, with your
-          role limits, on the same governed tools.
-        </p>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {panel !== "none" && (
             <button
               onClick={() => setPanel("none")}
-              className="flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
             >
               <MessageSquare className="size-4" aria-hidden />
-              Back to chat
+              {t("Back to chat")}
             </button>
           )}
           <button
             onClick={() =>
               setPanel((p) => (p === "connect" ? "none" : "connect"))
             }
-            title="Open Claude and connect this hotel over MCP — scoped to your role"
+            title={t("Open Claude and connect this hotel over MCP - scoped to your role")}
             className={
-              "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm " +
+              "flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm " +
               (panel === "connect"
                 ? "border-brand-400 bg-brand-50 text-brand-700"
                 : "border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700")
             }
           >
             <Plug className="size-4" aria-hidden />
-            Connect your AI
+            {t("Connect your AI")}
           </button>
         </div>
       </header>
@@ -133,6 +222,9 @@ export function ActivityTab({ property }: { property: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [kind, setKind] = useState("")
+  const { roles } = useAuth()
+  const { t } = useT()
+  const canSeeSignIns = roles.some((r) => SIGN_IN_ROLES.includes(r))
   const [page, setPage] = useState(0)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [detail, setDetail] = useState<ActivityDetail | null>(null)
@@ -151,6 +243,7 @@ export function ActivityTab({ property }: { property: string }) {
   }
 
   const load = useCallback((silent = false) => {
+    if (kind === "signins") return
     if (!silent) setLoading(true)
     call<ActivityRow[]>("kamra.agents_api.activity_feed", {
       property,
@@ -185,15 +278,21 @@ export function ActivityTab({ property }: { property: string }) {
           className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm"
           aria-label="Filter by who acted"
         >
-          <option value="">Everyone</option>
-          <option value="human">People only</option>
-          <option value="agent">AI only</option>
+          <option value="">{t("Everyone")}</option>
+          <option value="human">{t("People only")}</option>
+          <option value="agent">{t("AI only")}</option>
+          {canSeeSignIns && <option value="signins">{t("Staff sign-ins")}</option>}
         </select>
         <p className="text-xs text-zinc-400">
-          Every action on the property, newest first - who did it and what
-          changed.
+          {kind === "signins"
+            ? t("Who signed in to and out of Kamra, newest first.")
+            : t("Every action on the property, newest first - who did it and what changed.")}
         </p>
       </div>
+      {kind === "signins" ? (
+        <SignInsTable property={property} />
+      ) : (
+      <>
 
       {error && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -357,12 +456,14 @@ export function ActivityTab({ property }: { property: string }) {
           </Button>
         </div>
       </div>
+      </>
+      )}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Connect tab — one click into Claude's prefilled connector dialog + OAuth
+// Connect tab - one click into Claude's prefilled connector dialog + OAuth
 // ---------------------------------------------------------------------------
 
 interface ConnectInfo {
@@ -442,7 +543,7 @@ export function ConnectTab({ property }: { property: string }) {
           {info && !info.is_public_https && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
               Claude reaches this hotel from Anthropic&apos;s cloud, so the
-              site needs public HTTPS. This origin looks local — use Claude
+              site needs public HTTPS. This origin looks local - use Claude
               Code over HTTP on this machine, or the stdio sidecar, until you
               have a public URL.
             </p>
@@ -553,7 +654,7 @@ export function ConnectTab({ property }: { property: string }) {
       <p className="text-xs text-zinc-400">
         Need a platform-wide or service key (unattended jobs)? That
         is issued by your system admin under Developers. Staff should use
-        Connect Claude — no API secrets on a laptop.
+        Connect Claude - no API secrets on a laptop.
       </p>
     </div>
   )

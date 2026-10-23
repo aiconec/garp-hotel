@@ -58,7 +58,9 @@ def issuer_url() -> str:
 
 
 def protected_resource_url() -> str:
-	return f"{origin()}/mcp/oauth/resource"
+	# RFC 9728 metadata document - the path mcp_http.dispatch serves; the
+	# 401 WWW-Authenticate header points clients here
+	return f"{origin()}/mcp/.well-known/oauth-protected-resource"
 
 
 def is_public_https(url: str | None = None) -> bool:

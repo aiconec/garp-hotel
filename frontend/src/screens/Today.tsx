@@ -9,11 +9,11 @@ import {
   Wallet,
   ListChecks,
   PieChart,
+  SlidersHorizontal,
 } from "lucide-react"
-import { useNavigate, useOutletContext } from "react-router-dom"
+import { Link, useNavigate, useLocation, useOutletContext } from "react-router-dom"
 import {
   call,
-  checkOut,
   getCurrentProperty,
   getSnapshot,
   setHousekeepingStatus,
@@ -35,10 +35,24 @@ import { RoomMediaDialog } from "../components/HkMedia"
 import { cn } from "../lib/utils"
 import type { ShellContext } from "../AppShell"
 import CheckInDialog from "../components/CheckInDialog"
+import BookingRequests from "../components/BookingRequests"
 import { serverError } from "../lib/resource"
 import { toFullPath } from "../lib/routing"
 import { cur, moneyLocale } from "../lib/money"
 import { useT } from "../lib/i18n"
+import CheckOutDialog from "../components/CheckOutDialog"
+import RoomDrawer, { type RoomTab } from "../components/RoomDrawer"
+import RoomChangeDialog from "../components/RoomChangeDialog"
+import CustomizeToday from "../components/CustomizeToday"
+import OpenTasksCard from "../components/OpenTasksCard"
+import {
+  cachedLayout,
+  DEFAULT_TODAY_LAYOUT,
+  getTodayLayout,
+  type TodayLayout,
+  type TodayLayoutInfo,
+  type WidgetId,
+} from "../lib/rooms"
 
 const HK_STATUSES: RoomRow["housekeeping_status"][] = [
   "Dirty",
@@ -148,13 +162,13 @@ function ReservationList(props: {
                 </span>
               )}
               {row.status === "Confirmed" && (
-                <a
-                  href={toFullPath(`/grc/${encodeURIComponent(row.name)}`)}
+                <Link
+                  to={`/grc/${encodeURIComponent(row.name)}`}
                   className="ml-2 font-medium text-brand-700 hover:underline"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {t("GRC")}
-                </a>
+                </Link>
               )}
               {row.status === "Confirmed" &&
                 row.precheckin_status !== "Submitted" &&
@@ -192,9 +206,14 @@ function ReservationList(props: {
   )
 }
 
+// Rooms saved without a floor still need a row on the board, or they
+// silently vanish from Today. They group under this key.
+const NO_FLOOR = "__none__"
+
 function ordinalFloor(f: string, t: (s: string, vars?: Record<string, string | number>) => string) {
+  if (f === NO_FLOOR) return t("Unassigned floor")
   const n = Number(f)
-  if (Number.isNaN(n)) return t("{f} Floor", { f })
+  if (Number.isNaN(n)) return /floor/i.test(f) ? f : t("{f} Floor", { f })
   const s = ["th", "st", "nd", "rd"]
   const v = n % 100
   return t("{n}{ord} Floor", { n, ord: s[(v - 20) % 10] || s[v] || s[0] })
@@ -231,16 +250,50 @@ function InHouseTable({
     )
   }
   return (
-    <div className="overflow-x-auto">
+    <>
+    {/* phones: one card per guest, nothing to scroll sideways */}
+    <ul className="divide-y divide-zinc-100 sm:hidden">
+      {rows.map((row) => {
+        const due = Number(row.balance_due ?? 0)
+        return (
+          <li key={row.name}>
+            <button
+              type="button"
+              onClick={() => navigate(`/grc/${row.name}`)}
+              className="flex w-full items-center gap-3 py-3 text-start"
+            >
+              <Avatar name={row.guest_name} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-zinc-800">{row.guest_name}</span>
+                <span className="block text-xs text-zinc-500">
+                  {row.room ? t("Room {room}", { room: row.room.split("-").pop() ?? "" }) : t("No room yet")}
+                  {" · "}
+                  {t("Leaves {when}", { when: relDay(row.check_out_date, t, today) })}
+                </span>
+              </span>
+              {due > 0 ? (
+                <span className="shrink-0 tabular-nums text-sm text-amber-700">
+                  {cur()}
+                  {inr0(due)} {t("Due")}
+                </span>
+              ) : (
+                <span className="shrink-0 tabular-nums text-sm text-zinc-400">{cur()}0</span>
+              )}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+    <div className="hidden overflow-x-auto sm:block">
       <table className="w-full min-w-[560px] text-sm">
         <thead>
-          <tr className="text-left text-[11px] font-medium uppercase tracking-wider text-zinc-400">
-            <th className="pb-2 pl-1 font-medium">{t("Guest")}</th>
+          <tr className="text-start text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+            <th className="pb-2 ps-1 font-medium">{t("Guest")}</th>
             <th className="pb-2 font-medium">{t("Room")}</th>
             <th className="pb-2 font-medium">{t("Source")}</th>
             <th className="pb-2 font-medium">{t("Balance")}</th>
             <th className="pb-2 font-medium">{t("Stay")}</th>
-            <th className="pb-2 pr-1 text-right font-medium">{t("Check-out")}</th>
+            <th className="pb-2 pe-1 text-end font-medium">{t("Check-out")}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-100">
@@ -252,7 +305,7 @@ function InHouseTable({
                 onClick={() => navigate(`/grc/${row.name}`)}
                 className="cursor-pointer hover:bg-zinc-50/70"
               >
-                <td className="py-2.5 pl-1">
+                <td className="py-2.5 ps-1">
                   <div className="flex items-center gap-2.5">
                     <Avatar name={row.guest_name} />
                     <span className="font-medium text-zinc-800">
@@ -261,7 +314,7 @@ function InHouseTable({
                   </div>
                 </td>
                 <td className="py-2.5 tabular-nums text-zinc-600">
-                  {row.room ? row.room.split("-").pop() : "—"}
+                  {row.room ? row.room.split("-").pop() : t("No room yet")}
                 </td>
                 <td className="py-2.5">
                   <SourceBadge row={row} />
@@ -281,7 +334,7 @@ function InHouseTable({
                   {t("{n} night{s}", { n: row.nights, s: row.nights === 1 ? "" : "s" })} ·{" "}
                   {t("{n} adult{s}", { n: row.adults, s: row.adults === 1 ? "" : "s" })}
                 </td>
-                <td className="py-2.5 pr-1 text-right">
+                <td className="py-2.5 pe-1 text-end">
                   <div className="tabular-nums text-zinc-600">
                     {row.check_out_date}
                   </div>
@@ -295,6 +348,7 @@ function InHouseTable({
         </tbody>
       </table>
     </div>
+    </>
   )
 }
 
@@ -309,25 +363,26 @@ export default function Today() {
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [floor, setFloor] = useState("All")
-  // room tile menu and the cleaning-photo viewer, by room name
-  const [menu, setMenu] = useState<string | null>(null)
-  // open the menu leftwards when the tile sits near the right edge
-  const [menuRight, setMenuRight] = useState(false)
-  const [photos, setPhotos] = useState<string | null>(null)
+  // the widget layout: last one seen paints first, the server copy wins
+  const [layout, setLayout] = useState<TodayLayout>(
+    () => cachedLayout() ?? DEFAULT_TODAY_LAYOUT,
+  )
+  const [layoutInfo, setLayoutInfo] = useState<TodayLayoutInfo | null>(null)
+  const [customizing, setCustomizing] = useState(false)
   useEffect(() => {
-    if (!menu) return
-    const close = (e: Event) => {
-      if (e instanceof KeyboardEvent && e.key !== "Escape") return
-      if (e instanceof MouseEvent && (e.target as Element).closest?.("[data-room-menu]")) return
-      setMenu(null)
-    }
-    window.addEventListener("mousedown", close)
-    window.addEventListener("keydown", close)
-    return () => {
-      window.removeEventListener("mousedown", close)
-      window.removeEventListener("keydown", close)
-    }
-  }, [menu])
+    getTodayLayout()
+      .then((info) => {
+        setLayoutInfo(info)
+        setLayout(info.layout)
+      })
+      .catch(() => {
+        /* keep the cached / built-in layout */
+      })
+  }, [])
+  // room tile menu: open it leftwards when the tile sits near the right edge
+  const [menuRight, setMenuRight] = useState(false)
+  // the cleaning-photo viewer, by room name
+  const [photos, setPhotos] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -350,6 +405,39 @@ export default function Today() {
     const t = setInterval(refresh, 30_000)
     return () => clearInterval(t)
   }, [refresh, refreshKey])
+
+  // other screens (tape chart, command palette, a group companion) open
+  // the check-out sheet here with navigate("/", { state: { checkout } })
+  const location = useLocation()
+  const [checkingOut, setCheckingOut] = useState<string | null>(null)
+  const [roomMenu, setRoomMenu] = useState<string | null>(null)
+  // the room panel from the Rooms screen, opened over Today
+  const [roomPanel, setRoomPanel] = useState<{ room: string; tab?: RoomTab } | null>(null)
+  const [moving, setMoving] = useState<{ res: string; number: string } | null>(null)
+  const [panelKey, setPanelKey] = useState(0)
+  // a click outside the open room menu, or Esc, closes it
+  useEffect(() => {
+    if (!roomMenu) return
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== "Escape") return
+      if (e instanceof MouseEvent && (e.target as Element).closest?.("[data-room-menu]")) return
+      setRoomMenu(null)
+    }
+    window.addEventListener("mousedown", close)
+    window.addEventListener("keydown", close)
+    return () => {
+      window.removeEventListener("mousedown", close)
+      window.removeEventListener("keydown", close)
+    }
+  }, [roomMenu])
+  useEffect(() => {
+    const res = (location.state as { checkout?: string } | null)?.checkout
+    if (res) {
+      setCheckingOut(res)
+      // a reload must not reopen it
+      navigate(".", { replace: true, state: null })
+    }
+  }, [location.state, navigate])
 
   async function act(key: string, fn: () => Promise<unknown>) {
     setBusy(key)
@@ -374,31 +462,52 @@ export default function Today() {
   const inhouseN = snap?.in_house.length ?? 0
   const roomsN = snap?.rooms.length ?? 0
   const revenue = Number(kpi?.revenue_today ?? 0)
-  const revpar = Number(kpi?.statistics?.revpar ?? 0)
+  // Today's RevPAR (room revenue / rooms). MTD lives on statistics.revpar.
+  const revpar = Number(kpi?.revpar ?? kpi?.statistics?.revpar ?? 0)
+  const roomRevenueToday = Number(kpi?.room_revenue_today ?? 0)
   const tasksN = Number(kpi?.housekeeping?.open_tasks ?? 0)
   const overdueN = Number(kpi?.housekeeping?.overdue_tasks ?? 0)
   const allRooms = snap?.rooms ?? []
-  const floors = Array.from(
-    new Set(allRooms.map((r) => r.floor).filter(Boolean)),
-  ).sort() as string[]
+  const floorOf = (r: RoomRow) => (r.floor || "").trim() || NO_FLOOR
+  const floors = Array.from(new Set(allRooms.map(floorOf))).sort((a, b) =>
+    a === NO_FLOOR ? 1 : b === NO_FLOOR ? -1 : a.localeCompare(b, undefined, { numeric: true }),
+  )
   const shownFloors = floor === "All" ? floors : [floor]
   const renderRoom = (room: RoomRow) => {
+    const occupied = room.occupancy_status === "Occupied"
     const stay = (snap?.in_house ?? []).find((r) => r.room === room.name)
     const dueOut = !!stay && (snap?.departures ?? []).some((r) => r.name === stay.name)
-    const isOpen = menu === room.name
+    // a guest due in today who already has this room: the menu checks them in
+    const arriving = !occupied && !stay
+      ? (snap?.arrivals ?? []).find((r) => r.room === room.name)
+      : undefined
+    const isOpen = roomMenu === room.name
+    const item =
+      "flex w-full items-center gap-2 whitespace-nowrap px-3 py-2.5 text-start hover:bg-zinc-50 sm:py-1.5"
+    const openRoom = (tab?: RoomTab) => {
+      setRoomMenu(null)
+      setRoomPanel({ room: room.name, tab })
+    }
     return (
       <div key={room.name} className="relative" data-room-menu>
         <button
           type="button"
+          title={
+            stay
+              ? t("{guest} · check out or open registration", { guest: stay.guest_name })
+              : arriving
+                ? t("{guest} arrives today · check in", { guest: arriving.guest_name })
+                : undefined
+          }
           aria-haspopup="menu"
           aria-expanded={isOpen}
           disabled={busy === room.name}
           onClick={(e) => {
-            setMenuRight(e.currentTarget.getBoundingClientRect().left > window.innerWidth - 200)
-            setMenu(isOpen ? null : room.name)
+            setMenuRight(e.currentTarget.getBoundingClientRect().left > window.innerWidth - 220)
+            setRoomMenu(isOpen ? null : room.name)
           }}
           className={cn(
-            "w-full cursor-pointer rounded-lg border px-2 pb-1.5 pt-2 text-left transition-transform",
+            "w-full cursor-pointer rounded-lg border px-2 pb-1.5 pt-2 text-start transition-transform",
             "hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
             hkTone[room.housekeeping_status],
             busy === room.name && "opacity-60",
@@ -409,64 +518,128 @@ export default function Today() {
             <span className="flex items-center gap-1">
               {dueOut && <LogOut className="size-3.5 text-brand-700" aria-label={t("Due out")} />}
               {stay && <BedDouble className="size-3.5" aria-label={t("Occupied")} />}
+              {arriving && <LogIn className="size-3.5 text-brand-700" aria-label={t("Arriving")} />}
             </span>
           </div>
-          <div className="mt-0.5 text-[9px] font-medium uppercase tracking-wide opacity-80">
+          <div className="mt-0.5 truncate text-[9px] font-medium uppercase tracking-wide opacity-80">
             {t(room.housekeeping_status)}
           </div>
           <div className="mt-0.5 truncate text-[11px] opacity-80">
-            {stay ? stay.guest_name : t("Vacant")}
+            {stay ? stay.guest_name : arriving ? arriving.guest_name : t("Vacant")}
           </div>
         </button>
         {isOpen && (
           <div
             role="menu"
             className={cn(
-              "absolute top-full z-20 mt-1 w-max min-w-full overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 shadow-lg",
-              menuRight ? "right-0" : "left-0",
+              // phones: a sheet along the bottom; wider screens: under the tile
+              "fixed inset-x-4 bottom-4 z-40 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 text-base shadow-2xl",
+              "sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:z-20 sm:mt-1 sm:w-max sm:min-w-full sm:rounded-lg sm:text-sm sm:shadow-lg",
+              menuRight ? "sm:right-0" : "sm:left-0",
             )}
           >
+            {(stay ?? arriving) && (
+              <p className="truncate px-3 py-1 text-xs text-zinc-500">
+                {(stay ?? arriving)!.guest_name}
+              </p>
+            )}
+            {stay && (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={cn(item, "font-medium text-zinc-800")}
+                  onClick={() => {
+                    setRoomMenu(null)
+                    setCheckingOut(stay.name)
+                  }}
+                >
+                  <LogOut className="size-3.5 text-zinc-500" aria-hidden />
+                  {t("Check out")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={cn(item, "text-zinc-700")}
+                  onClick={() => openRoom("billing")}
+                >
+                  <Wallet className="size-3.5 text-zinc-500" aria-hidden />
+                  {t("Folio and billing")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={cn(item, "text-zinc-700")}
+                  onClick={() => openRoom("requests")}
+                >
+                  <ListChecks className="size-3.5 text-zinc-500" aria-hidden />
+                  {t("Guest requests")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={cn(item, "text-zinc-700")}
+                  onClick={() => {
+                    setRoomMenu(null)
+                    navigate(`/grc/${stay.name}`)
+                  }}
+                >
+                  <ClipboardList className="size-3.5 text-zinc-500" aria-hidden />
+                  {t("Open registration")}
+                </button>
+              </>
+            )}
+            {arriving && (
+              <button
+                type="button"
+                role="menuitem"
+                className={cn(item, "font-medium text-zinc-800")}
+                onClick={() => {
+                  setRoomMenu(null)
+                  setCheckingIn(arriving.name)
+                }}
+              >
+                <LogIn className="size-3.5 text-zinc-500" aria-hidden />
+                {t("Check in")}
+              </button>
+            )}
+            {(stay || arriving) && <div className="my-1 border-t border-zinc-100" />}
             {HK_STATUSES.filter((s) => s !== room.housekeeping_status).map((s) => (
               <button
                 key={s}
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  setMenu(null)
-                  act(room.name, () => setHousekeepingStatus(room.name, s))
+                  setRoomMenu(null)
+                  void act(room.name, () => setHousekeepingStatus(room.name, s))
                 }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-50"
+                className={cn(item, "text-zinc-700")}
               >
                 <span className={cn("size-2 rounded-full", hkDot[s])} aria-hidden />
                 {t("Mark {status}", { status: t(s) })}
               </button>
             ))}
             <div className="my-1 border-t border-zinc-100" />
-            {stay && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null)
-                  navigate(`/grc/${stay.name}`)
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-50"
-              >
-                <ClipboardList className="size-3.5 text-zinc-500" aria-hidden />
-                {t("Open registration")}
-              </button>
-            )}
             <button
               type="button"
               role="menuitem"
               onClick={() => {
-                setMenu(null)
+                setRoomMenu(null)
                 setPhotos(room.name)
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-50"
+              className={cn(item, "text-zinc-700")}
             >
               <Camera className="size-3.5 text-zinc-500" aria-hidden />
               {t("Cleaning photos")}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={cn(item, "text-zinc-700")}
+              onClick={() => openRoom()}
+            >
+              <BedDouble className="size-3.5 text-zinc-500" aria-hidden />
+              {t("Room details")}
             </button>
           </div>
         )}
@@ -496,28 +669,10 @@ export default function Today() {
       })
     : ""
 
-  return (
-    <div>
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-zinc-900">
-            {t("Front Desk Overview")}
-          </h1>
-          <p className="mt-0.5 text-sm text-zinc-500">
-            {greeting}. {t("Here's what's happening today.")}
-          </p>
-        </div>
-        <div className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium tabular-nums text-zinc-600">
-          {prettyDate}
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
-          {error}
-        </div>
-      )}
-
+  // Today is a set of widgets; each person picks which show and in what
+  // order (Customize). The built-in layout is the classic Today.
+  const widgets: Record<WidgetId, React.ReactNode> = {
+    kpis: (
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" data-tour="today-kpis">
         <StatCard
           icon={<LogIn className="size-4" />}
@@ -552,161 +707,297 @@ export default function Today() {
           icon={<Wallet className="size-4" />}
           label={t("Revenue")}
           value={`${cur()}${inr0(revenue)}`}
-          sub={t("RevPAR {amount}", { amount: `${cur()}${inr0(revpar)}` })}
+          sub={
+            roomRevenueToday > 0 || revpar > 0
+              ? t("RevPAR {amount} · room {room}", {
+                  amount: `${cur()}${inr0(revpar)}`,
+                  room: `${cur()}${inr0(roomRevenueToday)}`,
+                  // keep "room Rp18.480" together if the line has to wrap
+                }).replace(/ (\S+)$/, "\u00a0$1")
+              : t("RevPAR {amount} · no room charges posted today", {
+                  amount: `${cur()}${inr0(revpar)}`,
+                })
+          }
           spark={mkTrend(revenue)}
         />
         <StatCard
           icon={<ListChecks className="size-4" />}
           label={t("Open tasks")}
           value={tasksN}
-          sub={overdueN ? t("{n} overdue", { n: overdueN }) : undefined}
+          sub={
+            overdueN
+              ? t("{n} overdue · Housekeeping", { n: overdueN })
+              : t("Housekeeping")
+          }
+          to={"/housekeeping"}
         />
       </div>
-
-      <div className="grid gap-4 xl:grid-cols-5">
-        <div className="min-w-0 space-y-4 xl:col-span-2">
-          <Card data-tour="today-arrivals">
-            <CardHeader>
-              <CardTitle>{t("Arrivals")}</CardTitle>
-              <LogIn className="size-4 text-zinc-400" aria-hidden />
-            </CardHeader>
-            <CardContent className="pt-1">
-              <ReservationList
-                rows={snap?.arrivals ?? []}
-                empty={t("No arrivals expected today.")}
-                action={(row) => (
-                  <Button
-                    disabled={busy === row.name}
-                    onClick={() => setCheckingIn(row.name)}
-                    data-tour="today-checkin"
-                  >
-                    {t("Check in")}
-                  </Button>
+    ),
+    booking_requests: <BookingRequests refreshKey={refreshKey} onChanged={refresh} />,
+    arrivals: (
+      <Card data-tour="today-arrivals">
+        <CardHeader>
+          <CardTitle>{t("Arrivals")}</CardTitle>
+          <LogIn className="size-4 text-zinc-400" aria-hidden />
+        </CardHeader>
+        <CardContent className="pt-1">
+          <ReservationList
+            rows={snap?.arrivals ?? []}
+            empty={t("No arrivals expected today.")}
+            action={(row) => (
+              <Button
+                disabled={busy === row.name}
+                onClick={() => setCheckingIn(row.name)}
+                data-tour="today-checkin"
+              >
+                {t("Check in")}
+              </Button>
+            )}
+          />
+        </CardContent>
+      </Card>
+    ),
+    departures: (
+      <Card data-tour="today-departures">
+        <CardHeader>
+          <CardTitle>{t("Departures")}</CardTitle>
+          <LogOut className="size-4 text-zinc-400" aria-hidden />
+        </CardHeader>
+        <CardContent className="pt-1">
+          <ReservationList
+            rows={snap?.departures ?? []}
+            empty={t("No departures due today.")}
+            action={(row) => (
+              <Button
+                variant="outline"
+                disabled={busy === row.name}
+                onClick={() => setCheckingOut(row.name)}
+              >
+                {t("Check out")}
+              </Button>
+            )}
+          />
+        </CardContent>
+      </Card>
+    ),
+    room_board: (
+      <Card data-tour="today-rooms">
+        <CardHeader>
+          <CardTitle>{t("Room board")}</CardTitle>
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="hidden truncate text-xs text-zinc-400 sm:inline">
+              {t("Tap a room for actions")}
+            </span>
+            <Link
+              to="/room-board"
+              className="shrink-0 text-sm font-medium text-brand-700 hover:underline"
+            >
+              {t("Open full view")}
+            </Link>
+          </span>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-3 flex flex-wrap gap-1 border-b border-zinc-100">
+            {["All", ...floors].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFloor(f)}
+                className={cn(
+                  "relative px-3 py-1.5 text-sm font-medium",
+                  floor === f
+                    ? "text-brand-700"
+                    : "text-zinc-500 hover:text-zinc-700",
                 )}
-              />
-            </CardContent>
-          </Card>
-
-          <Card data-tour="today-departures">
-            <CardHeader>
-              <CardTitle>{t("Departures")}</CardTitle>
-              <LogOut className="size-4 text-zinc-400" aria-hidden />
-            </CardHeader>
-            <CardContent className="pt-1">
-              <ReservationList
-                rows={snap?.departures ?? []}
-                empty={t("No departures due today.")}
-                action={(row) => (
-                  <Button
-                    variant="outline"
-                    disabled={busy === row.name}
-                    onClick={() => act(row.name, () => checkOut(row.name))}
-                  >
-                    {t("Check out")}
-                  </Button>
+              >
+                {f === "All" ? t("All Floors") : ordinalFloor(f, t)}
+                {floor === f && (
+                  <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand-600" />
                 )}
-              />
-            </CardContent>
-          </Card>
+              </button>
+            ))}
+          </div>
+          <div className="space-y-3">
+            {shownFloors.map((fl) => (
+              <div key={fl} className="flex items-start gap-3">
+                <div className="w-14 shrink-0 pt-2 text-xs font-medium text-zinc-500">
+                  {ordinalFloor(fl, t)}
+                </div>
+                <div className="grid min-w-0 flex-1 grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-2">
+                  {allRooms
+                    .filter((r) => floorOf(r) === fl)
+                    .map((room) => renderRoom(room))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-zinc-400">
+            {t("Tap a room to change its housekeeping status, open the guest's registration or see cleaning photos.")}
+          </p>
+          {photos && <RoomMediaDialog room={photos} onClose={() => setPhotos(null)} />}
+        </CardContent>
+      </Card>
+    ),
+    in_house: (
+      <Card data-tour="today-inhouse">
+        <CardHeader>
+          <CardTitle>{t("In-house guests")}</CardTitle>
+          <span className="text-xs text-zinc-400">
+            {t("{n} staying", { n: inhouseN })}
+          </span>
+        </CardHeader>
+        <CardContent className="pt-1">
+          <InHouseTable rows={snap?.in_house ?? []} today={snap?.date} />
+        </CardContent>
+      </Card>
+    ),
+    housekeeping: (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("Housekeeping")}</CardTitle>
+          <span className="text-xs text-zinc-400">
+            {t("{pct}% occupied · {occupied} of {total}", {
+              pct: occupancyPct,
+              occupied: occupied ?? 0,
+              total: roomsN,
+            })}
+          </span>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {hkStats.map((s) => (
+              <div
+                key={s.label}
+                className="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2"
+              >
+                <span className={cn("size-2 rounded-full", s.dot)} />
+                <span className="text-lg font-semibold tabular-nums">
+                  {s.value}
+                </span>
+                <span className="text-xs text-zinc-500">{s.label}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    ),
+    open_tasks: <OpenTasksCard refreshKey={refreshKey} />,
+  }
+  const visible = (ids: WidgetId[]) => ids.filter((id) => !layout.hidden.includes(id))
+  const top = visible(layout.top)
+  const left = visible(layout.left)
+  const right = visible(layout.right)
+
+  return (
+    <div>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-zinc-900">
+            {t("Front Desk Overview")}
+          </h1>
+          <p className="mt-0.5 text-sm text-zinc-500">
+            {greeting}. {t("Here's what's happening today.")}
+          </p>
         </div>
-
-        <div className="min-w-0 space-y-4 xl:col-span-3">
-          <Card data-tour="today-rooms">
-            <CardHeader>
-              <CardTitle>{t("Room board")}</CardTitle>
-              <span className="text-xs text-zinc-400">
-                {t("Tap a room for actions")}
-              </span>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-3 flex flex-wrap gap-1 border-b border-zinc-100">
-                {["All", ...floors].map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setFloor(f)}
-                    className={cn(
-                      "relative px-3 py-1.5 text-sm font-medium",
-                      floor === f
-                        ? "text-brand-700"
-                        : "text-zinc-500 hover:text-zinc-700",
-                    )}
-                  >
-                    {f === "All" ? t("All Floors") : ordinalFloor(f, t)}
-                    {floor === f && (
-                      <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand-600" />
-                    )}
-                  </button>
-                ))}
-              </div>
-              <div className="space-y-3">
-                {shownFloors.map((fl) => (
-                  <div key={fl} className="flex items-start gap-3">
-                    <div className="w-14 shrink-0 pt-2 text-xs font-medium text-zinc-500">
-                      {ordinalFloor(fl, t)}
-                    </div>
-                    <div className="grid min-w-0 flex-1 grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-2">
-                      {allRooms
-                        .filter((r) => r.floor === fl)
-                        .map((room) => renderRoom(room))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-3 text-xs text-zinc-400">
-                {t("Tap a room to change its housekeeping status, open the guest's registration or see cleaning photos.")}
-              </p>
-              {photos && <RoomMediaDialog room={photos} onClose={() => setPhotos(null)} />}
-            </CardContent>
-          </Card>
-
-          <Card data-tour="today-inhouse">
-            <CardHeader>
-              <CardTitle>{t("In-house guests")}</CardTitle>
-              <span className="text-xs text-zinc-400">
-                {t("{n} staying", { n: inhouseN })}
-              </span>
-            </CardHeader>
-            <CardContent className="pt-1">
-              <InHouseTable rows={snap?.in_house ?? []} today={snap?.date} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Housekeeping")}</CardTitle>
-              <span className="text-xs text-zinc-400">
-                {t("{pct}% occupied · {occupied} of {total}", {
-                  pct: occupancyPct,
-                  occupied: occupied ?? 0,
-                  total: roomsN,
-                })}
-              </span>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {hkStats.map((s) => (
-                  <div
-                    key={s.label}
-                    className="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2"
-                  >
-                    <span className={cn("size-2 rounded-full", s.dot)} />
-                    <span className="text-lg font-semibold tabular-nums">
-                      {s.value}
-                    </span>
-                    <span className="text-xs text-zinc-500">{s.label}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium tabular-nums text-zinc-600">
+            {prettyDate}
+          </div>
+          <Button
+            variant="outline"
+            disabled={!layoutInfo}
+            onClick={() => setCustomizing(true)}
+            title={t("Choose what Today shows")}
+          >
+            <SlidersHorizontal className="size-4" aria-hidden />
+            {t("Customize")}
+          </Button>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {top.map((id) => (
+        <div key={id}>{widgets[id]}</div>
+      ))}
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+        {left.length > 0 && (
+          <div className={cn("min-w-0 space-y-4", right.length ? "xl:col-span-2" : "xl:col-span-5")}>
+            {left.map((id) => (
+              <div key={id} className="min-w-0">
+                {widgets[id]}
+              </div>
+            ))}
+          </div>
+        )}
+        {right.length > 0 && (
+          <div className={cn("min-w-0 space-y-4", left.length ? "xl:col-span-3" : "xl:col-span-5")}>
+            {right.map((id) => (
+              <div key={id} className="min-w-0">
+                {widgets[id]}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {customizing && layoutInfo && (
+        <CustomizeToday
+          info={layoutInfo}
+          current={layout}
+          onClose={() => setCustomizing(false)}
+          onSaved={(info) => {
+            setLayoutInfo(info)
+            setLayout(info.layout)
+          }}
+        />
+      )}
+      {checkingOut && (
+        <CheckOutDialog
+          reservation={checkingOut}
+          onClose={() => setCheckingOut(null)}
+          onDone={() => {
+            setCheckingOut(null)
+            setPanelKey((k) => k + 1)
+            void refresh()
+          }}
+          onOpenReservation={(name) => setCheckingOut(name)}
+        />
+      )}
+      {roomPanel && !checkingOut && !checkingIn && !moving && (
+        <RoomDrawer
+          room={roomPanel.room}
+          initialTab={roomPanel.tab}
+          reloadKey={panelKey}
+          onClose={() => setRoomPanel(null)}
+          onChanged={() => void refresh()}
+          onCheckOut={setCheckingOut}
+          onCheckIn={setCheckingIn}
+          onMove={(res, number) => setMoving({ res, number })}
+        />
+      )}
+      {moving && (
+        <RoomChangeDialog
+          reservation={moving.res}
+          currentRoomNumber={moving.number}
+          onClose={() => setMoving(null)}
+          onMoved={() => {
+            setMoving(null)
+            setPanelKey((k) => k + 1)
+            void refresh()
+          }}
+        />
+      )}
       {checkingIn && (
         <CheckInDialog
           reservation={checkingIn}
           onClose={() => setCheckingIn(null)}
           onDone={() => {
             setCheckingIn(null)
+            setPanelKey((k) => k + 1)
             refresh()
           }}
         />

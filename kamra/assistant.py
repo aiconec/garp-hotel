@@ -29,6 +29,10 @@ from kamra.assistant_privacy import processor_disclosure, scrub_for_llm
 from kamra.authz import require_roles
 from kamra.llm_compat import DEFAULT_MODEL
 from kamra.site_conf import site_conf
+from kamra.llm_compat import chat_payload, retry_chat_payload
+# one set of booking-reference parameter docs for MCP and the copilot
+from kamra.mcp_tools import (IDEMPOTENCY_KEY_PARAM, MEAL_PLAN_PARAM,
+                             RATE_PLAN_PARAM, ROOM_TYPE_PARAM, is_replay)
 
 MAX_TOOL_ROUNDS = 6
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -105,19 +109,43 @@ Rules:
 # tool name → (kamra.api function, description, JSON-schema params,
 # inject property?, mutating? - mutating calls are audit-logged)
 EXTRA_TOOLS = {
+	"amend_stay_preview": (
+		"amend_stay_preview",
+		"What new dates would do to a stay's bill (current vs new total, new "
+		"nightly rates). Read-only - call before amend_stay.",
+		{"reservation": {"type": "string"}, "check_in_date": {"type": "string"},
+		 "check_out_date": {"type": "string"}}, False, False),
 	"amend_stay": (
 		"amend_stay",
-		"Change a stay's dates (extend/shorten). Re-prices and re-checks overlaps.",
+		"Change a stay's dates (extend/shorten). Re-prices and re-checks "
+		"overlaps. When the total changes it is refused unless confirm_price=1: "
+		"run amend_stay_preview, tell the user the new price, and only pass "
+		"confirm_price=1 once they agree.",
 		{"reservation": {"type": "string"}, "check_in_date": {"type": "string"},
-		 "check_out_date": {"type": "string"}}, False, True),
+		 "check_out_date": {"type": "string"},
+		 "confirm_price": {"type": "integer"}}, False, True),
 	"move_room": (
 		"move_reservation",
 		"Move OR upgrade a stay to a different room - a same-type swap, or a "
 		"different type (upgrade/downgrade, e.g. Standard -> Suite). The stay's "
 		"room type follows the room it moves into. Call movable_rooms first to "
-		"pick a room that is free for the dates.",
-		{"reservation": {"type": "string"}, "new_room": {"type": "string"}},
+		"pick a room that is free for the dates. A different type re-prices: "
+		"check room_move_preview and pass confirm_price=1 once the new price "
+		"is agreed.",
+		{"reservation": {"type": "string"}, "new_room": {"type": "string"},
+		 "confirm_price": {"type": "integer"}},
 		False, True),
+	"room_move_preview": (
+		"room_move_preview",
+		"What moving a stay to a room would do to its bill. Read-only.",
+		{"reservation": {"type": "string"}, "new_room": {"type": "string"}},
+		False, False),
+	"set_late_arrival": (
+		"set_late_arrival",
+		"Flag a confirmed arrival as arriving late (late_arrival=1, optional "
+		"eta) so the night audit holds it instead of marking a no-show; 0 clears.",
+		{"reservation": {"type": "string"}, "late_arrival": {"type": "integer"},
+		 "eta": {"type": "string"}}, False, True),
 	"movable_rooms": (
 		"movable_rooms",
 		"Rooms this stay could move into - across ALL room types - each flagged "
@@ -201,7 +229,7 @@ EXTRA_TOOLS = {
 	"set_room_rate": (
 		"set_room_rate",
 		"Set a nightly rate for a room type over dates. Owner guardrails apply - give a reason.",
-		{"room_type": {"type": "string"}, "start_date": {"type": "string"},
+		{"room_type": ROOM_TYPE_PARAM, "start_date": {"type": "string"},
 		 "end_date": {"type": "string"}, "rate": {"type": "number"},
 		 "reason": {"type": "string"}}, True, True),
 	"owner_briefing": (
@@ -215,10 +243,25 @@ EXTRA_TOOLS = {
 		"and balances due, back-to-back room conflicts, the demand tier "
 		"pricing is applying, and a 7-day outlook.",
 		{"date": {"type": "string"}}, True, False),
+	"night_audit_precheck": (
+		"night_audit.night_audit_precheck",
+		"The night audit checklist for the current business date (read-only): "
+		"open tills, open restaurant bills, departures still in house, arrivals "
+		"and what the no-show policy will do, rate variances, outlet bills on "
+		"rooms, high balances, companies over credit limit, room status "
+		"discrepancies. Each check has a severity (block | warn | info), a "
+		"count, the rows and a suggested action. Run it before run_night_audit.",
+		{}, True, False),
 	"run_night_audit": (
 		"run_night_audit",
-		"Run end-of-day for a date: posts room nights, flags & charges no-shows.",
-		{"business_date": {"type": "string"}}, True, True),
+		"Run end-of-day for the current business date: posts room nights, "
+		"flags & charges no-shows, rolls the business date. Refused while a "
+		"blocking pre-check has items: resolve them, or - only when staff "
+		"confirm - pass acknowledge (the check keys) with note (the reason). "
+		"business_date is optional and must equal the current business date.",
+		{"business_date": {"type": "string"},
+		 "acknowledge": {"type": "array", "items": {"type": "string"}},
+		 "note": {"type": "string"}}, True, True),
 }
 
 TOOLS = {
@@ -233,10 +276,14 @@ TOOLS = {
 		{"start_date": {"type": "string"}, "days": {"type": "integer"}}, True, False),
 	"quote": (
 		"get_quote",
-		"Price a stay (room type, dates, occupancy, optional meal plan / voucher).",
-		{"room_type": {"type": "string"}, "check_in_date": {"type": "string"},
+		"Price a stay (room type, dates, occupancy, optional meal plan / rate "
+		"plan / voucher). Room type, meal plan and rate plan take the id, code "
+		"or exact name; an unknown or ambiguous one is refused with the valid "
+		"options - pick from those, never guess.",
+		{"room_type": ROOM_TYPE_PARAM, "check_in_date": {"type": "string"},
 		 "check_out_date": {"type": "string"}, "adults": {"type": "integer"},
-		 "children": {"type": "integer"}, "meal_plan": {"type": "string"},
+		 "children": {"type": "integer"}, "meal_plan": MEAL_PLAN_PARAM,
+		 "rate_plan": RATE_PLAN_PARAM,
 		 "voucher_code": {"type": "string"}}, True, False),
 	"booking_options": (
 		"booking_options",
@@ -244,11 +291,15 @@ TOOLS = {
 		{}, True, False),
 	"create_booking": (
 		"create_booking",
-		"Book a stay. Quote first; confirm the total with staff before calling.",
-		{"room_type": {"type": "string"}, "check_in_date": {"type": "string"},
+		"Book a stay. Quote first; confirm the total with staff before calling. "
+		"Room type / meal plan / rate plan take the id, code or exact name. "
+		"Call it once per room: a repeat returns the existing booking "
+		"(idempotent_replay) instead of booking twice.",
+		{"room_type": ROOM_TYPE_PARAM, "check_in_date": {"type": "string"},
 		 "check_out_date": {"type": "string"}, "guest_name": {"type": "string"},
 		 "phone": {"type": "string"}, "adults": {"type": "integer"},
-		 "children": {"type": "integer"}, "meal_plan": {"type": "string"},
+		 "children": {"type": "integer"}, "meal_plan": MEAL_PLAN_PARAM,
+		 "rate_plan": RATE_PLAN_PARAM, "idempotency_key": IDEMPOTENCY_KEY_PARAM,
 		 "company": {"type": "string"},
 		 "booked_by_name": {"type": "string"},
 		 "booked_by_phone": {"type": "string"}}, True, True),
@@ -300,9 +351,14 @@ TOOLS = {
 		"Name a guest into a group's room block (creates their reservation "
 		"on the group dates).",
 		{"group_booking": {"type": "string"},
-		 "room_type": {"type": "string"},
+		 "room_type": ROOM_TYPE_PARAM,
 		 "guest_name": {"type": "string"},
-		 "phone": {"type": "string"}}, False, True),
+		 "phone": {"type": "string"}, "adults": {"type": "integer"},
+		 "children": {"type": "integer"},
+		 "idempotency_key": {
+			 "type": "string",
+			 "description": "Optional unique key for this pickup; a retry with "
+			 "the same key returns the first reservation."}}, False, True),
 	"guest_search": (
 		"guest_search",
 		"Find a guest profile by name or phone (returning guests, VIPs).",
@@ -723,6 +779,11 @@ def _system(property: str, s) -> str:
 		extra=("\n" + s.extra_instructions) if s.extra_instructions else "")
 
 
+# a ticket the copilot raises is an agent's ticket - the same source the MCP
+# create_ticket tool stamps, so reports tell it apart from staff-typed ones
+_FIXED_ARGS = {"raise_ticket": {"source": "AI Agent"}}
+
+
 def _clean_args(name: str, args: dict, property: str) -> dict:
 	if not _tool_allowed(name):
 		frappe.throw("Your role doesn't include this action.",
@@ -732,6 +793,8 @@ def _clean_args(name: str, args: dict, property: str) -> dict:
 	         if k in params and v not in (None, "")}
 	if inject:
 		clean["property"] = property
+	# arguments the tool always carries, whatever the model sent
+	clean.update(_FIXED_ARGS.get(name, {}))
 	return clean
 
 
@@ -775,7 +838,8 @@ def _execute(name: str, clean: dict, property: str):
 	"""Run a tool as the signed-in person. There is no agent flag, so the
 	cashier PIN and the person's own POS session apply as they do on screen."""
 	result = _resolve(TOOLS[name][0])(**clean)
-	if TOOLS[name][4]:
+	# an idempotent replay changed nothing, so it gets no second audit line
+	if TOOLS[name][4] and not is_replay(result):
 		# a guaranteed audit line for every state-changing chat action,
 		# on top of whatever the API itself logs: the model proposed it,
 		# the signed-in person approved it

@@ -12,6 +12,7 @@ from decimal import Decimal
 import frappe
 
 FNB_GST = 5.0  # F&B / meal-plan GST rate
+SERVICES_GST = 18.0  # laundry and other guest services
 
 DEFAULT_CURRENCY = "INR"
 DEFAULT_TIMEZONE = "Asia/Kolkata"
@@ -25,6 +26,10 @@ NOTICE_LANGUAGES = ["hi", "kn", "ta", "te", "ml", "mr", "bn"]
 # Form C / the guest register accept any of these for Indian nationals
 ID_TYPES = ["Aadhaar", "Passport", "Driving License", "Voter ID", "PAN", "Other"]
 PAYMENT_MODES = ["Cash", "Card", "UPI", "Bank Transfer"]
+# Indian hotels keep a signed registration card (the hotel register the
+# police may inspect), so the guided check-in makes the GRC a required step
+# by default. A property can still change it in its check-in steps.
+REGISTRATION_CARD_REQUIRED = True
 
 
 def _dec(v):
@@ -45,6 +50,10 @@ def calculate_room_tax(property, room_type_doc, nightly_rate) -> Decimal:
 
 def fnb_tax_rate(property) -> float:
 	return FNB_GST
+
+
+def services_tax_rate(property) -> float:
+	return SERVICES_GST
 
 
 def tax_rate_options(property) -> list:
@@ -73,7 +82,9 @@ SAC_CODES = {
 	"Room": "996311",              # room or unit accommodation
 	"Early Check-in": "996311",
 	"Late Checkout": "996311",
+	"Pet Charge": "996311",        # part of the stay, billed with the room
 	"Meal Plan": "996311",         # bundled into the accommodation supply
+	"Extra Guests": "996311",      # extra beds in a let unit, same supply
 	"Food & Beverage": "996331",   # restaurant / outdoor catering
 	"Minibar": "996331",
 	"Laundry": "999712",           # washing, cleaning and dyeing
@@ -94,9 +105,9 @@ DEFAULT_SAC = "999799"
 
 
 def service_code_for(prop_doc, charge_type: str | None = None) -> dict | None:
-	"""The SAC for one line. Discounts and allowances aren't a supply, so
-	they carry no code at all."""
-	if charge_type in ("Discount", "Allowance"):
+	"""The SAC for one line. Discounts, allowances and a go-live opening
+	balance aren't a supply, so they carry no code at all."""
+	if charge_type in ("Discount", "Allowance", "Opening Balance"):
 		return None
 	return {"label": "SAC",
 	        "value": SAC_CODES.get(charge_type or "", DEFAULT_SAC)}

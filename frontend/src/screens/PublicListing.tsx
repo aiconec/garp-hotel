@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { clampGuests, maxCapacity } from "../lib/occupancy"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import {
   ArrowLeft,
@@ -18,13 +19,19 @@ import { BookingCodeStep } from "../components/BookingCodeStep"
 import { Sheet } from "../components/ui/sheet"
 import { cur, moneyLocale, adoptUiLocale } from "../lib/money"
 import { formatPhoneDisplay, formatPhoneTel } from "../lib/phone"
+import { petChargeBasis } from "../lib/pets"
+import ChildAges, {
+  agesToSend, canReserve, sizeAges, StayNotice,
+  type ChildAge, type StayFit,
+} from "../components/ChildAges"
 
 const inr = (n: number) =>
   n.toLocaleString(moneyLocale(), { maximumFractionDigits: 0 })
 
 interface Resolved {
-  kind: "listing" | "site"
+  kind: "listing" | "site" | "property"
   property: string
+  property_slug?: string
   listing_slug?: string
   location_slug?: string
   location_name?: string
@@ -42,6 +49,9 @@ interface Showcase {
     brand_accent: string | null
     payment_mode: string
     cleaning_fee: number
+    pets_allowed?: number
+    pet_charge?: number
+    pet_charge_basis?: string
     security_deposit_amount: number
     minimum_nights: number
     booking_mode: string
@@ -65,6 +75,7 @@ interface Showcase {
     description: string | null
     base_price: number
     adults_capacity: number
+    children_capacity: number
     bed_type: string | null
     room_view: string | null
     amenities: string[]
@@ -90,13 +101,14 @@ interface Showcase {
   meal_plans: { name: string; code: string; label: string; price_per_adult: number }[]
 }
 
-interface StayResult {
+interface StayResult extends StayFit {
   room_type: string
   rooms_left: number
   quote: {
     nights: number
     amount_after_tax: number
     cleaning_fee?: number
+    pet_charge?: number
     totals?: { deposit_required?: number }
   } | null
 }
@@ -220,10 +232,14 @@ export default function PublicListing() {
       check_in_date,
       check_out_date: checkout ?? addDays(check_in_date, 2),
       adults: Number(adultsParam ?? 2) || 2,
+      pets: 0,
       children: Number(childrenParam ?? 0) || 0,
     }
   })
   const [results, setResults] = useState<Record<string, StayResult>>({})
+  const [childAgesState, setChildAges] = useState<ChildAge[]>([])
+  const childAges = sizeAges(childAgesState, search.children)
+  const agesMissing = search.children > 0 && !agesToSend(childAges)
   const [booking, setBooking] = useState<string | null>(null)
   const [form, setForm] = useState({
     guest_name: "",
@@ -242,6 +258,34 @@ export default function PublicListing() {
   const locationSlug = resolved?.location_slug
   const isSite = resolved?.kind === "site"
   const primary = data?.room_types[0]
+
+  // What can actually be booked here. A listing is capped by its own room
+  // type; a site page by the roomiest listing on it, since the guest has yet
+  // to pick one. Without this the page quotes a party the booking will then
+  // refuse - the guest gets a price, fills in their details, and only finds
+  // out on submit (Reservation.validate_occupancy is the real guard).
+  const maxAdults = isSite
+    ? maxCapacity(data?.room_types, "adults_capacity")
+    : Number(primary?.adults_capacity) || 0
+  const maxChildren = isSite
+    ? maxCapacity(data?.room_types, "children_capacity")
+    : Number(primary?.children_capacity) || 0
+  const atAdultCap = maxAdults > 0 && search.adults >= maxAdults
+  const atChildCap = maxChildren > 0 && search.children >= maxChildren
+
+  // The party also arrives in the URL (/stay/slug/in/out/adults/children), so
+  // clamp once the capacity is known - otherwise a shared or edited link walks
+  // straight past the inputs.
+  useEffect(() => {
+    if (!maxAdults && !maxChildren) return
+    setSearch((q) => {
+      const adults = clampGuests(q.adults, 1, maxAdults)
+      const children = clampGuests(q.children, 0, maxChildren)
+      return adults === q.adults && children === q.children
+        ? q
+        : { ...q, adults, children }
+    })
+  }, [maxAdults, maxChildren])
   const siteMeta = useMemo(() => {
     if (!data) return null
     if (isSite && locationSlug) {
@@ -257,6 +301,17 @@ export default function PublicListing() {
     if (!slug) return
     callGuest<Resolved>("kamra.public_api.resolve_slug", { slug })
       .then((r) => {
+        if (r.kind === "property") {
+          // a whole property: its own /book page (sites, listings or rooms),
+          // keeping the stay the guest already typed into the URL
+          const stay = checkin
+            ? `/${search.check_in_date}/${search.check_out_date}/${search.adults}/${search.children}`
+            : ""
+          const qs = new URLSearchParams(searchParams)
+          qs.set("property", r.property_slug || slug)
+          navigate(`/book${stay}?${qs}`, { replace: true })
+          return null
+        }
         setResolved(r)
         const args: Record<string, string> = { property: r.property }
         if (r.listing_slug) args.listing_slug = r.listing_slug
@@ -266,7 +321,9 @@ export default function PublicListing() {
           r,
         }))
       })
-      .then(({ d }) => {
+      .then((out) => {
+        if (!out) return
+        const { d } = out
         adoptUiLocale(
           (d as unknown as { ui_locale?: { currency_symbol?: string; locale?: string } })
             .ui_locale,
@@ -290,7 +347,7 @@ export default function PublicListing() {
     if (!resolved) return
     const t = setTimeout(fetchResults, 300)
     return () => clearTimeout(t)
-  }, [resolved, search, checkOut, listingSlug, locationSlug])
+  }, [resolved, search, checkOut, listingSlug, locationSlug, childAgesState])
 
   function fetchResults() {
     if (!resolved) return
@@ -300,6 +357,8 @@ export default function PublicListing() {
       check_out_date: checkOut,
       adults: search.adults,
       children: search.children,
+      child_ages: agesToSend(childAges),
+      pets: search.pets,
       listing_slug: listingSlug,
       location_slug: locationSlug,
     }).then((rows) => {
@@ -330,6 +389,8 @@ export default function PublicListing() {
           check_out_date: checkOut,
           adults: search.adults,
           children: search.children,
+          child_ages: agesToSend(childAges),
+          pets: search.pets,
           ...form,
         },
       )
@@ -543,6 +604,7 @@ export default function PublicListing() {
                               ) : (
                                 <p className="text-zinc-400">Checking…</p>
                               )}
+                              <StayNotice row={r} />
                             </div>
                             <div className="flex gap-2">
                               {rt.listing_slug && (
@@ -556,7 +618,7 @@ export default function PublicListing() {
                                 </Button>
                               )}
                               <Button
-                                disabled={!r?.quote}
+                                disabled={!canReserve(r) || agesMissing}
                                 onClick={() => setBooking(rt.name)}
                               >
                                 Reserve
@@ -593,6 +655,12 @@ export default function PublicListing() {
                 {p.pets_policy && (
                   <p className="mt-3 text-zinc-600">Pets: {p.pets_policy}</p>
                 )}
+                {!!p.pets_allowed && (p.pet_charge || 0) > 0 && (
+                  <p className="mt-1 text-zinc-600">
+                    Pet charge {cur()}
+                    {inr(p.pet_charge || 0)} {petChargeBasis(p.pet_charge_basis)}
+                  </p>
+                )}
                 {p.children_policy && (
                   <p className="mt-2 text-zinc-600">Children: {p.children_policy}</p>
                 )}
@@ -628,6 +696,13 @@ export default function PublicListing() {
                     ? `${results[primary!.name].quote!.nights} nights · taxes in`
                     : "from / night"}
                 </p>
+                {!isSite && (results[primary?.name ?? ""]?.quote?.pet_charge || 0) > 0 && (
+                  <p className="text-xs text-zinc-500">
+                    Includes {cur()}
+                    {inr(results[primary!.name].quote!.pet_charge || 0)} for{" "}
+                    {search.pets} pet{search.pets === 1 ? "" : "s"}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -673,15 +748,21 @@ export default function PublicListing() {
                   <input
                     type="number"
                     min={1}
+                    max={maxAdults || undefined}
                     className={inputCls}
                     value={search.adults}
                     onChange={(e) =>
                       setSearch({
                         ...search,
-                        adults: Math.max(1, Number(e.target.value)),
+                        adults: clampGuests(Number(e.target.value), 1, maxAdults),
                       })
                     }
                   />
+                  {atAdultCap && (
+                    <span className="mt-1 block text-xs text-rose-600">
+                      Sleeps up to {maxAdults}
+                    </span>
+                  )}
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-sm font-medium text-zinc-600">
@@ -690,17 +771,49 @@ export default function PublicListing() {
                   <input
                     type="number"
                     min={0}
+                    max={maxChildren || undefined}
                     className={inputCls}
                     value={search.children}
                     onChange={(e) =>
                       setSearch({
                         ...search,
-                        children: Math.max(0, Number(e.target.value)),
+                        children: clampGuests(Number(e.target.value), 0, maxChildren),
                       })
                     }
                   />
+                  {atChildCap && (
+                    <span className="mt-1 block text-xs text-rose-600">
+                      Up to {maxChildren} children
+                    </span>
+                  )}
                 </label>
+                {!!p.pets_allowed && (
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-zinc-600">
+                      Pets
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      className={inputCls}
+                      value={search.pets}
+                      onChange={(e) =>
+                        setSearch({
+                          ...search,
+                          pets: Math.max(0, Number(e.target.value) || 0),
+                        })
+                      }
+                    />
+                    {(p.pet_charge || 0) > 0 && (
+                      <span className="mt-1 block text-xs text-zinc-500">
+                        {cur()}
+                        {inr(p.pet_charge || 0)} {petChargeBasis(p.pet_charge_basis)}
+                      </span>
+                    )}
+                  </label>
+                )}
               </div>
+              <ChildAges ages={childAges} onChange={setChildAges} selectCls={inputCls} />
               <p className="text-center text-xs text-zinc-400">
                 {nightsBetween(search.check_in_date, search.check_out_date)} night
                 {nightsBetween(search.check_in_date, search.check_out_date) === 1 ? "" : "s"}
@@ -724,12 +837,13 @@ export default function PublicListing() {
                 <Button
                   id="sticky-book"
                   className="w-full justify-center py-2.5 text-base"
-                  disabled={!results[primary.name]?.quote}
+                  disabled={!canReserve(results[primary.name]) || agesMissing}
                   onClick={() => setBooking(primary.name)}
                 >
                   {confirmLabel}
                 </Button>
               )}
+              {!isSite && primary && <StayNotice row={results[primary.name]} />}
 
               {isSite && (
                 <p className="text-center text-sm text-zinc-500">
@@ -760,7 +874,17 @@ export default function PublicListing() {
       {booking && (
         <Sheet
           wide
-          title={done?.verify ? "Confirm your booking" : done?.status === "Pending Payment" ? "Booking held" : done ? "Booking confirmed" : "Complete your booking"}
+          title={
+            done?.verify
+              ? "Confirm your booking"
+              : done?.status === "Pending Payment"
+                ? "Booking held"
+                : done?.status === "Requested"
+                  ? "Request sent"
+                  : done
+                    ? "Booking confirmed"
+                    : "Complete your booking"
+          }
           description={
             done
               ? undefined

@@ -23,3 +23,13 @@ kamra.patches.v36.move_kitchen_ledger_off_stock_ledger_entry
 kamra.patches.v37.move_corporate_clients_off_company
 kamra.patches.v38.keep_existing_messages
 kamra.patches.v39.rename_site_config_keys
+kamra.patches.v39.backfill_company_credit_guest_ledger
+kamra.patches.v40.backfill_charge_ledger
+kamra.patches.v40.apply_city_ledger_payments
+kamra.patches.v40.lock_confirmed_night_rates
+kamra.patches.v41.move_advances_to_guest_ledger
+kamra.patches.v42.outlet_kot_mode
+kamra.patches.v42.credit_days_use_property_default
+kamra.patches.v42.backfill_city_ledger_due_dates
+kamra.patches.v43.seed_petty_cash_floats
+kamra.patches.v43.backfill_checkin_record

@@ -36,9 +36,14 @@ scheduler_events = {
 		"0 9 * * *": ["kamra.prearrival.run_prearrival_outreach"],
 		# every 15 min - escalate overdue housekeeping tasks up the ladder;
 		# also release expired Held / Pending Payment reservations (ADR-006)
+		# and, past the property's release time, today's non-guaranteed
+		# arrivals (no-show policy, off unless a release time is set)
 		"*/15 * * * *": [
 			"kamra.housekeeping.escalate_overdue_tasks",
 			"kamra.reservation_state.expire_holds",
+			# group blocks past their cutoff give unpicked rooms back to sale
+			"kamra.group_blocks.release_expired_blocks",
+			"kamra.no_show.release_non_guaranteed_arrivals",
 		],
 		# 08:30 - the banquet team's morning list: follow-ups gone quiet,
 		# tentative holds about to lapse, payments due, event orders missing
@@ -52,9 +57,14 @@ scheduler_events = {
 		# 03:40 - the same for conversations: WhatsApp message text and AI
 		# assistant chats past the property's message retention period
 		"40 3 * * *": ["kamra.privacy.apply_message_retention"],
+		# 03:50 - finished kitchen print jobs (guest names on the ticket)
+		# are kept a week for reprints, then dropped
+		"50 3 * * *": ["kamra.printing.purge_old_jobs"],
 		# 04:45 - drop old kamrapms.com Hosting Enquiry leads (default 24 months;
 		# Won / converted stays; site_config hosting_enquiry_retention_months)
 		"45 4 * * *": ["kamra.hosting_enquiry_retention.purge_expired_hosting_enquiries"],
+		# every minute - outbound webhook retries that are due (backoff)
+		"* * * * *": ["kamra.webhooks.retry_due"],
 	},
 }
 
@@ -227,12 +237,39 @@ after_migrate = ["kamra.install.after_migrate"]
 # Guest has no property link, so Property User Permissions can't limit it;
 # these apply Kamra's stay-history rule to Frappe's own REST, Desk and
 # private file downloads too (see kamra.authz.guest_query_conditions).
+# Every Kamra DocType linking a Property fails closed under the opt-in
+# kamra_strict_property_scope site setting; with it off these add nothing.
+_PROPERTY_SCOPED = (
+	"Agent Action Log", "AI Assistant Settings", "Banquet Checklist Template",
+	"Banquet Dish", "Banquet Function Task", "Banquet Menu",
+	"Banquet Service Item", "Cancelled Invoice", "Cash Transfer", "Cashier", "Cashier Session", "Cashier Terminal",
+	"Cashier Transaction", "Channel Manager Connection",
+	"Channel Provider Connection", "City Ledger Account", "City Ledger Entry",
+	"Copilot Conversation", "Credit Note", "Discount Voucher", "Exchange Rate",
+	"Exchange Transaction", "Experience", "External POS Charge", "Folio", "Folio Ledger Entry",
+	"Folio Reprint", "Group Booking", "Housekeeping Task", "Hurdle Rate",
+	"Ingredient", "Ingredient Ledger Entry", "Ingredient Stock", "Kitchen Printer",
+	"Laundry Order", "Laundry Rate", "Lost And Found Item", "MCP OAuth Grant",
+	"Meal Plan", "Menu Item", "Night Audit Run", "Outbound Webhook",
+	"Outbound Webhook Delivery", "Payment Gateway Settings",
+	"Petty Cash Voucher", "POS Order", "POS Outlet", "POS Table Reservation",
+	"Print Job",
+	"Proforma Folio", "Property Setting", "Rate Guardrail", "Rate Plan",
+	"Reservation",
+	"Revenue Budget", "Room", "Room Block", "Room Type", "Season",
+	"Security Deposit", "Sellable Unit", "Service Ticket", "Shift Handover", "SOP Template", "Ticket Event",
+	"Transaction Code", "Turnover Profile", "Venue", "Venue Booking",
+	"WhatsApp Message", "ZATCA Invoice", "ZATCA Settings",
+)
+
 permission_query_conditions = {
 	"Guest": "kamra.authz.guest_query_conditions",
+	**{dt: "kamra.authz.property_query_conditions" for dt in _PROPERTY_SCOPED},
 }
 
 has_permission = {
 	"Guest": "kamra.authz.guest_has_permission",
+	**{dt: "kamra.authz.property_has_permission" for dt in _PROPERTY_SCOPED},
 }
 
 # Document Events
@@ -253,11 +290,16 @@ doc_events = {
 # A reservation booked/modified/cancelled moves availability, so fan the new
 # numbers out to the channel manager (Pipeline 1). Runs alongside the realtime
 # notify; best-effort and after-commit so it never affects the booking itself.
+# The same changes are offered to integrators as outbound webhooks
+# (reservation.*, guest.checked_in/out): queued in the transaction, sent
+# after commit (kamra.webhooks).
 doc_events["Reservation"] = {
 	"after_insert": ["kamra.realtime.notify",
-	                 "kamra.channel_manager.on_reservation_change"],
+	                 "kamra.channel_manager.on_reservation_change",
+	                 "kamra.webhooks.on_reservation_insert"],
 	"on_update": ["kamra.realtime.notify",
-	              "kamra.channel_manager.on_reservation_change"],
+	              "kamra.channel_manager.on_reservation_change",
+	              "kamra.webhooks.on_reservation_update"],
 	"on_trash": "kamra.realtime.notify",
 }
 
@@ -269,6 +311,7 @@ _MONEY_DOCTYPES = (
 	"City Ledger Account", "City Ledger Entry", "Credit Note",
 	"Cancelled Invoice", "Security Deposit", "Exchange Rate",
 	"Exchange Transaction", "Petty Cash Voucher",
+	"Cash Transfer", "External POS Charge", "Reservation Night Rate",
 )
 for _dt in _MONEY_DOCTYPES:
 	_ev = doc_events.setdefault(_dt, {})
@@ -333,6 +376,10 @@ for _dt in _MONEY_DOCTYPES:
 # -----------------------------------------------------------
 
 # ignore_links_on_delete = ["Communication", "ToDo"]
+
+# Door lock connectors (kamra.door_lock). A vendor app adds its own:
+# kamra_door_lock_adapters = {"acme": "acme_kamra.locks.AcmeAdapter"}
+kamra_door_lock_adapters = {"manual": "kamra.door_lock.ManualAdapter"}
 
 # Remote MCP + OAuth live at /mcp and /mcp/oauth/* (not the SPA).
 page_renderer = ["kamra.mcp_http.MCPPageRenderer"]

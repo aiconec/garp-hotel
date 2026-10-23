@@ -37,10 +37,16 @@ export function tValue(s: string): string {
   return hit ? rebrand(hit) : s
 }
 
-/** Translate for a specific language (e.g. offline export). */
-export function tFor(lang: Lang, s: string, vars?: Vars): string {
-  const dict = DICT[lang] ?? {}
-  return interpolate(rebrand(dict[s] ?? s), vars)
+/** English plural form for a count: "one" or "other". Arabic and other
+ * languages translate each English form; the count goes in as {n}. */
+function pluralForm(n: number, one: string, other: string): string {
+  return new Intl.PluralRules("en").select(n) === "one" ? one : other
+}
+
+/** Translate a counted phrase: the English singular form for 1, the
+ * plural otherwise ("1 child", "2 children"); {n} is the count. */
+export function tn(n: number, one: string, other: string, vars?: Vars): string {
+  return t(pluralForm(n, one, other), { n, ...vars })
 }
 
 /** Subscribe a component to the language: re-renders on change, returns a
@@ -59,5 +65,10 @@ export function useT() {
     },
     [lang],
   )
-  return { lang, t }
+  const tnBound = useCallback(
+    (n: number, one: string, other: string, vars?: Vars) =>
+      t(pluralForm(n, one, other), { n, ...vars }),
+    [t],
+  )
+  return { lang, t, tn: tnBound }
 }

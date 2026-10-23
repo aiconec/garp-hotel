@@ -7,7 +7,7 @@ revenue posting should use get_business_date(property), not nowdate()."""
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_days, getdate, nowdate
+from frappe.utils import add_days, nowdate
 
 
 def get_business_date(property: str) -> str:
@@ -19,18 +19,24 @@ def get_business_date(property: str) -> str:
 
 
 def property_today(property: str) -> str:
-	"""Calendar date at the property, in its own time zone; the site clock
-	when the property has none (or an unknown one)."""
+	"""Calendar date at the property, in its own time zone. Built from the
+	site's nowdate() plus the day the time zones differ by, so the audit
+	tests that pin nowdate pin this too."""
+	today = nowdate()
 	tz = (frappe.db.get_value("Property", property, "timezone") or "").strip()
 	if tz:
 		from datetime import datetime
 		from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+		from frappe.utils import get_system_timezone
+
 		try:
-			return datetime.now(ZoneInfo(tz)).date().isoformat()
+			now = datetime.now(ZoneInfo(get_system_timezone()))
+			shift = (now.astimezone(ZoneInfo(tz)).date() - now.date()).days
+			return add_days(today, shift) if shift else today
 		except (ZoneInfoNotFoundError, ValueError):
 			pass
-	return nowdate()
+	return today
 
 
 def ensure_business_date(property: str) -> str:
@@ -44,12 +50,9 @@ def ensure_business_date(property: str) -> str:
 
 
 def advance_business_date(property: str, from_date: str | None = None) -> str:
-	"""Roll the business date forward by one day after a successful night audit.
-	Closing a day that is already past (catching up) never rolls it back."""
-	current = get_business_date(property)
-	nxt = add_days(from_date or current, 1)
-	if getdate(nxt) <= getdate(current):
-		return str(current)
+	"""Roll the business date forward by one day after a successful night audit."""
+	current = from_date or get_business_date(property)
+	nxt = add_days(current, 1)
 	frappe.db.set_value("Property", property, "business_date", nxt,
 	                    update_modified=False)
 	return str(nxt)

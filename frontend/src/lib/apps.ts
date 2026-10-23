@@ -30,9 +30,12 @@ import {
   ListChecks,
   ListTodo,
   PackageSearch,
+  Boxes,
+  Printer,
   Plus,
   ReceiptText,
   ScrollText,
+  FileX2,
   Settings as SettingsIcon,
   Shirt,
   Smartphone,
@@ -40,6 +43,7 @@ import {
   Store,
   Tags,
   Ticket,
+  Compass,
   TrendingUp,
   UserCog,
   Users,
@@ -62,7 +66,15 @@ import {
   Calculator,
   ChartGantt,
   MapPin,
+  MoonStar,
+  FileUp,
+  DoorOpen,
+  Hash,
+  ListOrdered,
 } from "lucide-react"
+
+/** "Night audit" is what most hotels call End of Day; EOD is what they type. */
+const EOD_KEYWORDS = ["Night audit", "End of day", "EOD", "Close the day"]
 
 /** Shared tile treatment for switcher and launcher. One quiet system, not a rainbow. */
 export const APP_TILE =
@@ -77,6 +89,8 @@ export interface AppNavItem {
   /** Sidebar section label within an app (e.g. Cashier / Billing / Books).
    *  Items before the first labelled section sit under the app header. */
   group?: string
+  /** Other words search (Ctrl/Cmd+K) finds this page by. */
+  keywords?: string[]
 }
 
 export interface AppDef {
@@ -101,18 +115,25 @@ export const APPS: AppDef[] = [
     icon: Building2,
     tint: APP_TILE,
     description: "Arrivals, departures, bookings and guests - the day's work.",
-    roles: ["Front Desk", "Hotel Admin", "System Manager", "Administrator"],
+    roles: ["Front Desk", "Night Auditor", "Hotel Admin", "System Manager", "Administrator"],
     items: [
       { to: "/", label: "Today", icon: Home },
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       // "Kamra Agent" rebrands to a 25-character name that wraps in the rail
       { to: "/assistant", label: "AI Agent", icon: Sparkles },
+      { to: "/end-of-day", label: "End of Day / Night Audit", icon: MoonStar,
+        keywords: EOD_KEYWORDS },
       { to: "/reservations", label: "Reservations", icon: ClipboardList, group: "Bookings" },
       { to: "/crs", label: "Central Reservations", icon: MapPin, group: "Bookings" },
       { to: "/guests", label: "Guests", icon: Users, group: "Bookings" },
       { to: "/tape", label: "Tape Chart", icon: ChartGantt, group: "Availability" },
+      { to: "/room-board", label: "Rooms", icon: DoorOpen, group: "Availability",
+        keywords: ["Room board", "Room status", "Out of order", "Room history"] },
       { to: "/calendar", label: "Calendar", icon: CalendarDays, group: "Availability" },
       { to: "/room-blocks", label: "Room Blocks", icon: Lock, group: "Availability" },
+      // trailing, unlabelled: the sidebar sets it apart with a gap
+      { to: "/settings/front-desk", label: "Settings", icon: SettingsIcon,
+        roles: ["Hotel Admin", "System Manager", "Administrator"] },
     ],
     extraPrefixes: ["/grc", "/cancelled", "/agents"],
   },
@@ -132,10 +153,16 @@ export const APPS: AppDef[] = [
       { to: "/housekeeping-board", label: "Room Board", icon: LayoutGrid,
         roles: ["Housekeeping Supervisor", "Front Desk", "Hotel Admin",
                 "System Manager", "Administrator"] },
+      { to: "/room-board", label: "Rooms", icon: DoorOpen,
+        roles: ["Housekeeping Supervisor", "Front Desk", "Hotel Admin",
+                "System Manager", "Administrator"],
+        keywords: ["Room history", "Who cleaned", "Room insights"] },
       { to: "/housekeeping", label: "Tasks", icon: ListChecks },
       { to: "/laundry", label: "Laundry", icon: Shirt },
       { to: "/lost-found", label: "Lost & Found", icon: PackageSearch },
       { href: "/hotel/hk", label: "Phone App", icon: Smartphone },
+      { to: "/settings/housekeeping", label: "Settings", icon: SettingsIcon,
+        roles: ["Housekeeping Supervisor", "Hotel Admin", "System Manager", "Administrator"] },
     ],
   },
   {
@@ -146,11 +173,13 @@ export const APPS: AppDef[] = [
     description: "Guest requests and ops workflows.",
     roles: ["Front Desk", "Hotel Admin", "System Manager", "Administrator"],
     items: [
-      { to: "/tickets", label: "Guest Requests", icon: Ticket },
+      { to: "/tickets", label: "Guest Requests (Tickets)", icon: Ticket, keywords: ["tickets", "service ticket", "complaint", "sla", "request"] },
       { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
       { to: "/channels", label: "Channels", icon: PhoneCall,
         roles: ["Hotel Admin", "System Manager", "Administrator"] },
       { to: "/ops-sla", label: "SLA Report", icon: AlarmClock },
+      { to: "/settings/operations", label: "Settings", icon: SettingsIcon,
+        roles: ["Hotel Admin", "System Manager", "Administrator"] },
     ],
   },
   {
@@ -165,8 +194,14 @@ export const APPS: AppDef[] = [
       { to: "/pos-dashboard", label: "F&B Dashboard", icon: TrendingUp },
       { to: "/kitchen", label: "Kitchen Display", icon: ConciergeBell },
       { to: "/menu-items", label: "Menu", icon: ClipboardList },
+      { to: "/ingredients", label: "Ingredients", icon: Boxes,
+        keywords: ["Store cupboard", "UOM", "Recipes", "Stock"] },
       { to: "/inventory", label: "Kitchen Inventory", icon: PackageSearch },
       { to: "/outlets", label: "Outlets", icon: Store },
+      { to: "/printers", label: "Printers", icon: Printer,
+        keywords: ["Kitchen printers", "KOT", "Print station", "Thermal"] },
+      { to: "/settings/fnb", label: "Settings", icon: SettingsIcon,
+        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
     ],
   },
   {
@@ -186,6 +221,8 @@ export const APPS: AppDef[] = [
       { to: "/events", label: "All Functions", icon: ListChecks },
       { to: "/groups", label: "Groups & Blocks", icon: Users },
       { to: "/venues", label: "Halls & Venues", icon: Landmark },
+      { to: "/settings/events", label: "Settings", icon: SettingsIcon,
+        roles: ["Revenue Manager", "Hotel Admin", "System Manager", "Administrator"] },
     ],
     extraPrefixes: ["/banquet"],
   },
@@ -198,15 +235,22 @@ export const APPS: AppDef[] = [
     roles: ["Revenue Manager", "Hotel Admin", "System Manager", "Administrator"],
     items: [
       { to: "/revenue-reports", label: "Revenue Reports", icon: ChartLine },
+      { to: "/rate-calendar", label: "Rate Calendar", icon: CalendarDays, group: "Pricing",
+        keywords: ["bar", "best available rate", "base rate", "rack rate", "tariff", "pricing", "price by date"] },
       { to: "/rate-plans", label: "Rate Plans", icon: Tags, group: "Pricing" },
       { to: "/seasons", label: "Seasons", icon: CalendarDays, group: "Pricing" },
       { to: "/guardrails", label: "Guardrails", icon: ShieldCheck, group: "Pricing" },
       { to: "/vouchers", label: "Vouchers", icon: BadgePercent, group: "Pricing" },
       { to: "/meal-plans", label: "Meal Plans", icon: UtensilsCrossed, group: "Pricing" },
+      { to: "/experiences", label: "Experiences", icon: Compass, group: "Pricing" },
+      // also in Admin: Room Types hold the base rates revenue works from
+      { to: "/room-types", label: "Room Types", icon: LayoutGrid, group: "Pricing" },
       { to: "/channel-manager", label: "Channel Manager", icon: Share2, group: "Distribution" },
       { to: "/ota-mappings", label: "OTA Room Mappings", icon: Network, group: "Distribution" },
       { to: "/travel-agents", label: "Travel Agents", icon: Briefcase, group: "Partners" },
       { to: "/companies", label: "Companies", icon: Building2, group: "Partners" },
+      { to: "/settings/revenue", label: "Settings", icon: SettingsIcon,
+        roles: ["Revenue Manager", "Hotel Admin", "System Manager", "Administrator"] },
     ],
   },
   {
@@ -216,26 +260,43 @@ export const APPS: AppDef[] = [
     tint: APP_TILE,
     description: "POS, folios, ledgers, night audit and books export.",
     roles: [
-      "Finance", "Front Desk", "Hotel Admin", "System Manager", "Administrator",
+      "Finance", "Front Desk", "Night Auditor", "Hotel Admin", "System Manager",
+      "Administrator",
     ],
     items: [
       // Cashier
       { to: "/cashier", label: "POS", icon: Wallet, group: "Cashier" },
+      { to: "/cashier/board", label: "All terminals", icon: Landmark, group: "Cashier" },
       { to: "/cashier/sessions", label: "Sessions", icon: Clock, group: "Cashier" },
       { to: "/cashier/petty-cash", label: "Petty Cash", icon: Banknote, group: "Cashier" },
       { to: "/cashier/shift-report", label: "Shift Report", icon: ScrollText, group: "Cashier" },
       { to: "/shifts", label: "Shift Handover", icon: Clock, group: "Cashier" },
       { to: "/cashier/fx", label: "Currency Desk", icon: Calculator, group: "Cashier" },
       // Billing
+      { to: "/end-of-day", label: "End of Day / Night Audit", icon: MoonStar, group: "Billing",
+        keywords: EOD_KEYWORDS },
       { to: "/billing", label: "Billing", icon: ReceiptText, group: "Billing" },
       { to: "/folio-history", label: "Folio History", icon: History, group: "Billing" },
       { to: "/laundry", label: "Laundry", icon: Shirt, group: "Billing" },
       // Books
       { to: "/ledgers", label: "Ledgers", icon: BookOpen, group: "Books" },
+      { to: "/transaction-codes", label: "Transaction Codes", icon: Hash, group: "Books",
+        keywords: ["Txn codes", "Revenue group", "Chart of accounts"],
+        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
+      { to: "/reason-codes", label: "Reason Codes", icon: ListOrdered, group: "Books",
+        keywords: ["Void reason", "Refund reason", "Allowance"],
+        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
       { to: "/reports", label: "Reports", icon: ChartLine, group: "Books" },
+      { to: "/voids-allowances", label: "Voids & Allowances", icon: FileX2, group: "Books",
+        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
       { to: "/accounting-export", label: "Accounting Export", icon: FileSpreadsheet, group: "Books" },
+      { to: "/settings/finance", label: "Settings", icon: SettingsIcon, group: "Books",
+        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
     ],
-    extraPrefixes: ["/billing/", "/cashier/", "/ledgers", "/folio-history"],
+    extraPrefixes: [
+      "/billing/", "/cashier/", "/ledgers", "/folio-history",
+      "/end-of-day", "/night-audit", "/reason-codes", "/transaction-codes",
+    ],
   },
   {
     id: "booking-engine",
@@ -252,6 +313,8 @@ export const APPS: AppDef[] = [
       { to: "/booking-settings/payments", label: "Payments", icon: ReceiptText },
       { to: "/booking-settings/faq", label: "FAQ", icon: HelpCircle },
       { to: "/booking-settings/seo", label: "SEO", icon: Search },
+      { to: "/settings/booking-engine", label: "Settings", icon: SettingsIcon,
+        roles: ["Revenue Manager", "Hotel Admin", "System Manager", "Administrator"] },
     ],
     extraPrefixes: ["/booking-settings"],
   },
@@ -260,10 +323,12 @@ export const APPS: AppDef[] = [
     name: "Admin",
     icon: SettingsIcon,
     tint: APP_TILE,
-    description: "Property setup, inventory, users, audit and the Marketplace.",
+    description: "Settings, staff and access, rooms, audit and the Marketplace.",
     roles: ["Hotel Admin", "System Manager", "Administrator"],
+    // every other settings page belongs here unless a module app claims it
+    extraPrefixes: ["/settings"],
     items: [
-      { to: "/settings", label: "Settings", icon: SettingsIcon },
+      { to: "/settings/general", label: "Settings", icon: SettingsIcon },
       { to: "/rooms", label: "Rooms", icon: BedDouble, group: "Property" },
       { to: "/room-types", label: "Room Types", icon: LayoutGrid, group: "Property" },
       {
@@ -273,6 +338,10 @@ export const APPS: AppDef[] = [
         roles: ["System Manager", "Administrator"],
         group: "Property",
       },
+      { to: "/go-live", label: "Go-live Import", icon: FileUp, group: "Property" },
+      { to: "/finish-setup", label: "Finish setup", icon: ListChecks, group: "Property",
+        keywords: ["onboarding", "checklist", "getting started", "setup wizard"] },
+      { to: "/settings/staff", label: "Staff & Access", icon: UserCog, group: "System" },
       { to: "/health", label: "System Health", icon: HeartPulse, group: "System" },
       { to: "/activity", label: "Activity Log", icon: ScrollText, group: "System" },
       { to: "/marketplace", label: "Marketplace", icon: Store, group: "System" },
@@ -281,13 +350,6 @@ export const APPS: AppDef[] = [
         label: "Developers",
         icon: Code2,
         roles: ["System Manager", "Administrator"],
-        group: "System",
-      },
-      {
-        href: `${DESK}/app/user`,
-        label: "Manage Users",
-        icon: UserCog,
-        roles: ["Administrator", "System Manager"],
         group: "System",
       },
       {
@@ -301,10 +363,13 @@ export const APPS: AppDef[] = [
   },
 ]
 
-/** Which app owns a path? Longest matching item route wins; "/" only exact. */
-export function appForPath(pathname: string): AppDef {
+/** Which app owns a path? Longest matching item route wins; "/" only exact.
+ *  A page listed in two apps (End of Day, Laundry, Room Types) belongs to
+ *  the first one *among* the apps given - pass the user's visible apps so
+ *  the page opens inside an app they can actually see. */
+export function appForPath(pathname: string, among: AppDef[] = APPS): AppDef {
   let best: { app: AppDef; len: number } | null = null
-  for (const app of APPS) {
+  for (const app of among.length ? among : APPS) {
     const prefixes = [
       ...app.items.filter((i) => i.to).map((i) => i.to!),
       ...(app.extraPrefixes ?? []),

@@ -16,5 +16,6 @@ export function rebrand(s: string): string {
   return s
     .replace(/Kamra Agent/g, BRAND_AGENT)
     .replace(/Kamra PMS/g, BRAND_NAME)
-    .replace(/\bKamra\b/g, BRAND_NAME)
+    // X-Kamra-* are the webhook header names on the wire; keep them exact
+    .replace(/(?<!X-)\bKamra\b/g, BRAND_NAME)
 }

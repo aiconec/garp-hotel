@@ -5,10 +5,12 @@ for staff restricted to some properties, which properties it may touch."""
 
 import inspect
 import json
+from contextlib import contextmanager
 from functools import wraps
 
 import frappe
-from frappe.utils import add_to_date, now_datetime
+from kamra.site_conf import site_conf
+from frappe.utils import add_to_date, cint, now_datetime
 
 ADMIN = ("System Manager", "Administrator", "Hotel Admin")
 
@@ -16,8 +18,40 @@ ADMIN = ("System Manager", "Administrator", "Hotel Admin")
 # For user management, developer settings and API keys.
 IT_ADMIN = ("System Manager", "Administrator")
 
+# defaults - each property can change them in Settings -> Finance
 PIN_MAX_ATTEMPTS = 5
 PIN_LOCK_MINUTES = 15
+
+
+def _pin_policy(property: str | None) -> tuple[int, int]:
+	"""(max wrong attempts, lock / unlock-window minutes) for a property."""
+	from kamra.settings import get_setting
+	return (int(get_setting(property, "pin_max_attempts", PIN_MAX_ATTEMPTS)),
+	        int(get_setting(property, "pin_lock_minutes", PIN_LOCK_MINUTES)))
+
+
+@contextmanager
+def act_as(user: str):
+	"""Run a block as another user (e.g. the governed agent@kamra.local) and
+	hand the caller's own session back untouched afterwards.
+
+	Switching user rewrites the live session in place - sid becomes the
+	user name and session.data (csrf_token, expiry, ...) is wiped. A plain
+	set_user(me) afterwards keeps the user but not the rest, and Frappe's
+	after-request Session.update() then caches that wiped record under the
+	real sid: the staff member's next call resolves to "User None" and the
+	SPA drops to the login screen. Snapshot and restore the session instead."""
+	session = frappe.local.session
+	saved = dict(session)
+	form_dict = frappe.local.form_dict
+	frappe.set_user(user)  # nosemgrep: frappe-setuser -- callers authorize first and scope what runs as this user
+	try:
+		yield
+	finally:
+		frappe.set_user(saved.get("user"))  # nosemgrep: frappe-setuser -- restoring the caller's own user
+		session.clear()
+		session.update(saved)
+		frappe.local.form_dict = form_dict
 
 
 def require_it_admin(fn):
@@ -53,6 +87,8 @@ SCOPED_ARGS = {
 	"service_item": ("Banquet Service Item",),
 	"ingredient": ("Ingredient",),
 	"session": ("Cashier Session",),
+	"cashier_terminal": ("Cashier Terminal",), "to_terminal": ("Cashier Terminal",),
+	"cash_office": ("Cashier Terminal",), "transfer": ("Cash Transfer",),
 	"ticket": ("Service Ticket",),
 	"account": ("City Ledger Account",),
 	"connection": ("Channel Manager Connection", "Channel Provider Connection"),
@@ -63,10 +99,46 @@ SCOPED_ARGS = {
 
 def restricted_properties(user: str | None = None) -> set[str] | None:
 	"""The properties the user (default: current) is limited to by Frappe
-	User Permissions, or None when they aren't restricted (they see them all)."""
+	User Permissions, or None when they aren't restricted (they see them all).
+	Opt-in strict scope requires everyone but Administrator / System Manager
+	to have explicit Property permissions."""
 	from frappe.core.doctype.user_permission.user_permission import get_user_permissions
-	perms = get_user_permissions(user or frappe.session.user).get("Property")
-	return {p.get("doc") for p in perms} if perms else None
+	user = user or frappe.session.user
+	perms = get_user_permissions(user).get("Property")
+	if perms:
+		return {p.get("doc") for p in perms}
+	if _strict_scope() and not (user == "Administrator" or "System Manager" in frappe.get_roles(user)):
+		return set()
+	return None
+
+
+def _strict_scope() -> bool:
+	return bool(cint(site_conf("strict_property_scope")))
+
+
+def property_query_conditions(user: str | None = None, doctype: str | None = None) -> str:
+	"""permission_query_conditions hook for property-linked doctypes. Only
+	under strict scope: a user without Property permissions then lists none,
+	not every hotel. Otherwise Frappe's own User Permissions apply as before."""
+	if not _strict_scope() or not doctype:
+		return ""
+	allowed = restricted_properties(user)
+	if allowed is None:
+		return ""
+	if not allowed:
+		return "1=0"
+	props = ", ".join(frappe.db.escape(p) for p in sorted(allowed))
+	return f"`tab{doctype}`.`property` IN ({props})"
+
+
+def property_has_permission(doc, ptype: str | None = None, user: str | None = None,
+                            debug: bool = False) -> bool:
+	"""has_permission hook matching property_query_conditions for single
+	records. Frappe treats a falsy return as a deny."""
+	if not _strict_scope():
+		return True
+	allowed = restricted_properties(user)
+	return allowed is None or doc.get("property") in allowed
 
 
 def assert_property_access(property: str | None):
@@ -121,18 +193,39 @@ _GENERIC_WRITE_METHODS = {
 }
 
 
-def _generic_write_request() -> bool:
+def _generic_write_target() -> set[str] | None:
+	"""The doctype(s) a generic REST / Desk write request is aimed at, or
+	None when the request isn't one. An empty set means "a generic write, but
+	its target can't be read", which is treated as aimed at everything."""
+	from urllib.parse import unquote
+
 	req = getattr(frappe.local, "request", None)
 	if not req:
-		return False  # scheduler, background job, console, migrate
+		return None  # scheduler, background job, console, migrate
 	path = req.path or ""
-	if path.startswith(("/api/resource/", "/api/v2/document/")):
-		return True
-	cmd = frappe.local.form_dict.get("cmd") or ""
+	for prefix in ("/api/resource/", "/api/v2/document/"):
+		if path.startswith(prefix):
+			return {unquote(path[len(prefix):].split("/", 1)[0])}
+	form = frappe.local.form_dict
+	cmd = form.get("cmd") or ""
 	for prefix in ("/api/method/", "/api/v2/method/"):
 		if path.startswith(prefix):
 			cmd = path[len(prefix):]
-	return cmd in _GENERIC_WRITE_METHODS
+	if cmd not in _GENERIC_WRITE_METHODS:
+		return None
+	targets = set()
+	if form.get("doctype"):
+		targets.add(form.get("doctype"))
+	for key in ("doc", "docs"):
+		raw = form.get(key)
+		try:
+			value = frappe.parse_json(raw) if isinstance(raw, str) else raw
+		except Exception:
+			value = None
+		for item in value if isinstance(value, list) else [value]:
+			if isinstance(item, dict) and item.get("doctype"):
+				targets.add(item["doctype"])
+	return targets
 
 
 def guard_money_write(doc, method=None):
@@ -140,7 +233,10 @@ def guard_money_write(doc, method=None):
 	if frappe.flags.in_install or frappe.flags.in_migrate or frappe.flags.in_patch \
 			or frappe.flags.in_test or frappe.flags.in_import:
 		return
-	if not _generic_write_request():
+	# only a request aimed at this record is refused: a generic save of a
+	# Reservation may still re-save its folio through Kamra's own code
+	targets = _generic_write_target()
+	if targets is None or (targets and doc.doctype not in targets):
 		return
 	if "System Manager" in frappe.get_roles() or frappe.session.user == "Administrator":
 		return
@@ -265,7 +361,8 @@ def require_roles(*roles, scope: dict | None = None):
 		def guarded(*args, **kwargs):
 			if not allowed & set(frappe.get_roles()):
 				frappe.throw(
-					f"Not permitted - needs one of: {', '.join(sorted(roles))}.",
+					f"Not permitted - needs one of: {', '.join(sorted(roles))}."
+					if roles else "Not permitted - needs Hotel Admin.",
 					frappe.PermissionError)
 			_enforce_property_scope(fn, args, kwargs, scope)
 			return fn(*args, **kwargs)
@@ -303,14 +400,74 @@ def require_cashier_pin(property: str, pin=None):
 	user = frappe.session.user
 	if user == "Administrator":
 		return
+	max_attempts, lock_minutes = _pin_policy(property)
 
 	# Sliding unlock window (set after a successful PinPad entry)
 	cache_key = f"kamra_cashier_unlock:{user}"
 	if frappe.cache.get_value(cache_key):
 		# refresh sliding window
-		frappe.cache.set_value(cache_key, 1, expires_in_sec=PIN_LOCK_MINUTES * 60)
+		frappe.cache.set_value(cache_key, 1, expires_in_sec=lock_minutes * 60)
 		return
+	_check_user_pin(user, pin, property)
+	frappe.cache.set_value(cache_key, 1, expires_in_sec=lock_minutes * 60)
 
+
+# Who may approve what a captain cannot do alone (voiding food the kitchen
+# has already started, say). The same roles the reason-code supervisor
+# rule accepts (kamra.ledger.require_reason).
+SUPERVISOR_ROLES = ("Hotel Admin", "Finance", "System Manager", "Administrator")
+
+
+def is_supervisor(user: str | None = None) -> bool:
+	user = user or frappe.session.user
+	return user == "Administrator" or bool(
+		set(SUPERVISOR_ROLES) & set(frappe.get_roles(user)))
+
+
+def verify_supervisor(property: str, supervisor: str | None, pin) -> str:
+	"""A supervisor approves at someone else's till with their user id and
+	their own cashier PIN. The PIN is always required here, whatever the
+	property's PIN setting, because it is the only proof the supervisor was
+	there. Wrong PINs count against the supervisor's lock like any other
+	entry. Returns the approving user."""
+	supervisor = (supervisor or "").strip()
+	if not supervisor or not frappe.db.exists("User", supervisor):
+		frappe.throw("SUPERVISOR_REQUIRED: pick the supervisor who approves this.",
+		             frappe.PermissionError)
+	if not frappe.db.get_value("User", supervisor, "enabled") or \
+			not is_supervisor(supervisor):
+		frappe.throw(f"{supervisor} cannot approve this. It needs a Hotel "
+		             "Admin or Finance user.", frappe.PermissionError)
+	allowed = restricted_properties(supervisor)
+	if property and allowed is not None and property not in allowed:
+		frappe.throw(f"{supervisor} has no access to {property}.",
+		             frappe.PermissionError)
+	if not frappe.db.exists("Cashier PIN", supervisor):
+		frappe.throw(f"PIN_NOT_SET: {supervisor} has no cashier PIN yet. They "
+		             "set one the first time a money action asks for it.")
+	if not pin:
+		frappe.throw("SUPERVISOR_PIN_REQUIRED: the supervisor enters their PIN.")
+	# The PIN record's own attempt counter is rolled back with a refused
+	# request, so guesses at someone else's PIN are also counted in the
+	# cache, which a rollback does not touch.
+	max_attempts, lock_minutes = _pin_policy(property)
+	fails_key = f"kamra_supervisor_pin_fails:{supervisor}"
+	if cint(frappe.cache.get_value(fails_key)) >= max_attempts:
+		frappe.throw("PIN_LOCKED: too many wrong supervisor PIN attempts - "
+		             f"try again in {lock_minutes} minutes.")
+	try:
+		_check_user_pin(supervisor, pin, property)
+	except frappe.ValidationError:
+		frappe.cache.set_value(fails_key, cint(frappe.cache.get_value(fails_key)) + 1,
+		                       expires_in_sec=lock_minutes * 60)
+		raise
+	frappe.cache.delete_value(fails_key)
+	return supervisor
+
+
+def _check_user_pin(user: str, pin, property: str | None):
+	"""Check `user`'s cashier PIN; wrong tries count towards the lock."""
+	max_attempts, lock_minutes = _pin_policy(property)
 	if not frappe.db.exists("Cashier PIN", user):
 		frappe.throw("PIN_NOT_SET: set your cashier PIN first (ask for it on "
 		             "this screen), then retry.")
@@ -328,13 +485,13 @@ def require_cashier_pin(property: str, pin=None):
 	if not stored or str(pin).strip() != str(stored):
 		attempts = int(doc.pin_attempts or 0) + 1
 		doc.pin_attempts = attempts
-		if attempts >= PIN_MAX_ATTEMPTS:
+		if attempts >= max_attempts:
 			doc.locked_until = add_to_date(now_datetime(),
-			                               minutes=PIN_LOCK_MINUTES)
+			                               minutes=lock_minutes)
 			doc.pin_attempts = 0
 			doc.save(ignore_permissions=True)
 			frappe.throw("PIN_LOCKED: too many wrong attempts - locked for "
-			             f"{PIN_LOCK_MINUTES} minutes.")
+			             f"{lock_minutes} minutes.")
 		doc.save(ignore_permissions=True)
 		frappe.throw("Wrong cashier PIN.")
 	# success
@@ -342,7 +499,6 @@ def require_cashier_pin(property: str, pin=None):
 		doc.pin_attempts = 0
 		doc.locked_until = None
 		doc.save(ignore_permissions=True)
-	frappe.cache.set_value(cache_key, 1, expires_in_sec=PIN_LOCK_MINUTES * 60)
 
 
 def unlock_cashier_session(property: str, pin: str) -> dict:
@@ -350,7 +506,7 @@ def unlock_cashier_session(property: str, pin: str) -> dict:
 	# Clear any existing unlock so we always re-validate
 	frappe.cache.delete_value(f"kamra_cashier_unlock:{frappe.session.user}")
 	require_cashier_pin(property, pin)
-	return {"ok": True, "unlocked_minutes": PIN_LOCK_MINUTES}
+	return {"ok": True, "unlocked_minutes": _pin_policy(property)[1]}
 
 
 def cashier_unlock_status(property: str) -> dict:
@@ -371,4 +527,6 @@ def cashier_unlock_status(property: str) -> dict:
 		"must_reset": must_reset,
 		"locked": locked,
 		"unlocked": unlocked or not required or user == "Administrator",
+		# how long an unlock lasts here (Settings -> Finance, pin_lock_minutes)
+		"unlock_minutes": _pin_policy(property)[1] if property else PIN_LOCK_MINUTES,
 	}

@@ -65,8 +65,7 @@ def registry(property: str):
 			"category": "Guest messaging (WhatsApp)",
 			"blurb": "WhatsApp is the guest channel in India, Southeast Asia "
 			         "and the Gulf. The Meta Cloud API integration is open "
-			         "source and included - bring your own number. Managed "
-			         "gateway and the AI concierge are connected services.",
+			         "source and included - bring your own number.",
 			"cards": [
 				_module("WhatsApp - Meta Cloud API",
 				        "Booking confirmations, self check-in links, payment "
@@ -163,7 +162,7 @@ def registry(property: str):
 			"blurb": "Tax, invoicing and government filing for where you "
 			         "operate. Install the pack for your country.",
 			"cards": [
-				_module("India", "GST slabs, SAC, GSTIN, GSTR-1, e-invoice. "
+				_module("India", "GST slabs, SAC, GSTIN, GSTR-1. "
 				        "Razorpay and Cashfree payment links.",
 				        detail="Included"),
 				_module("Indonesia",

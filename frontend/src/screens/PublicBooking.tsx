@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { clampGuests, maxCapacity } from "../lib/occupancy"
 import PrivacyNotice, { setPrivacyTerms } from "../components/PrivacyNotice"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import {
@@ -29,6 +30,11 @@ import { BookingCodeStep } from "../components/BookingCodeStep"
 import { Sheet } from "../components/ui/sheet"
 import { cur, moneyLocale, adoptUiLocale } from "../lib/money"
 import { formatPhoneDisplay, formatPhoneTel } from "../lib/phone"
+import { petChargeBasis } from "../lib/pets"
+import ChildAges, {
+  agesToSend, canReserve, sizeAges, StayNotice,
+  type ChildAge, type StayFit,
+} from "../components/ChildAges"
 
 const inr = (n: number) =>
   n.toLocaleString(moneyLocale(), { maximumFractionDigits: 0 })
@@ -45,6 +51,9 @@ interface Showcase {
     advance_percent: number
     registration_fee: number
     cleaning_fee: number
+    pets_allowed?: number
+    pet_charge?: number
+    pet_charge_basis?: string
     security_deposit_amount: number
     minimum_nights: number
     free_cancel_days: number
@@ -88,6 +97,7 @@ interface Showcase {
     description: string | null
     base_price: number
     adults_capacity: number
+    children_capacity: number
     bed_type: string | null
     room_view: string | null
     amenities: string[]
@@ -123,7 +133,7 @@ interface Showcase {
   }[]
 }
 
-interface StayResult {
+interface StayResult extends StayFit {
   room_type: string
   rooms_left: number
   quote: {
@@ -131,7 +141,11 @@ interface StayResult {
     amount_after_tax: number
     discount: number
     cleaning_fee?: number
+    pet_charge?: number
     totals?: { deposit_required?: number }
+    /** Server-computed from the property's payment policy - never derived here. */
+    advance_due?: number
+    balance_at_hotel?: number
   } | null
 }
 
@@ -217,6 +231,143 @@ function setMetaTag(name: string, content: string) {
   el.content = content
 }
 
+interface PropertyCard {
+  name: string
+  property_name: string
+  property_slug: string
+  city: string | null
+  state: string | null
+  hero_image: string | null
+  logo_url: string | null
+  property_kind: string | null
+  description: string | null
+  from_rate: number
+}
+
+/** /book on a site with several properties: pick one, then book it. Each
+ *  card opens that property's own page with the stay already filled in. */
+function PropertyChooser({
+  properties,
+  stayPath,
+  query,
+}: {
+  properties: PropertyCard[]
+  stayPath: string
+  query: string
+}) {
+  const { t, lang } = useT()
+  useEffect(() => {
+    document.title = t("Places to stay - book direct")
+  }, [t])
+  const linkFor = (slug: string) => {
+    const qs = new URLSearchParams(query)
+    qs.set("property", slug)
+    return `/book${stayPath}?${qs}`
+  }
+  return (
+    <div className="min-h-screen bg-zinc-50">
+      <div className="mx-auto max-w-5xl px-5 py-10 sm:py-14">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
+              {t("Places to stay")}
+            </h1>
+            <p className="mt-1.5 text-sm text-zinc-500">
+              {t("Pick a property to see its rooms, prices and availability.")}
+            </p>
+          </div>
+          <div
+            role="group"
+            aria-label={t("Language")}
+            className="flex shrink-0 rounded-full border border-zinc-200 bg-white p-0.5 text-xs font-medium"
+          >
+            {[["en", "EN"], ["id", "ID"]].map(([code, label]) => (
+              <button
+                key={code}
+                type="button"
+                aria-pressed={lang === code}
+                onClick={() => {
+                  try {
+                    setLang(code)
+                  } catch {
+                    /* storage blocked: the page stays in its language */
+                  }
+                }}
+                className={
+                  "rounded-full px-2.5 py-1 transition " +
+                  (lang === code ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900")
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mt-8 grid gap-6 sm:grid-cols-2">
+          {properties.map((p) => (
+            <Link
+              key={p.name}
+              to={linkFor(p.property_slug)}
+              className="group overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-brand-600/40 hover:shadow-md"
+            >
+              <div className="relative aspect-[16/10] bg-zinc-100">
+                {p.hero_image ? (
+                  <img
+                    src={p.hero_image}
+                    alt=""
+                    className="size-full object-cover transition duration-500 group-hover:scale-[1.02]"
+                  />
+                ) : (
+                  <div className="flex size-full items-center justify-center bg-gradient-to-br from-brand-700 to-brand-900 text-white">
+                    <span className="text-4xl font-semibold tracking-tight">
+                      {p.property_name
+                        .split(" ")
+                        .map((w) => w[0])
+                        .slice(0, 2)
+                        .join("")}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="min-w-0 text-xl font-semibold text-zinc-900 group-hover:text-brand-900">
+                    {p.property_name}
+                  </h2>
+                  {p.property_kind && (
+                    <Badge tone="zinc">
+                      {p.property_kind === "Short Term Rental" ? t("Villa / home") : tValue(p.property_kind)}
+                    </Badge>
+                  )}
+                </div>
+                {(p.city || p.state) && (
+                  <p className="mt-1.5 inline-flex items-center gap-1.5 text-sm text-zinc-500">
+                    <MapPin className="size-3.5 shrink-0" aria-hidden />
+                    {[p.city, p.state].filter(Boolean).join(", ")}
+                  </p>
+                )}
+                {p.description && (
+                  <p className="mt-2 line-clamp-2 text-sm text-zinc-600">{p.description}</p>
+                )}
+                <div className="mt-4 flex flex-wrap items-end justify-between gap-2 border-t border-zinc-100 pt-4">
+                  <p className="text-sm text-zinc-500">
+                    {p.from_rate > 0
+                      ? t("From {price} per night", { price: `${cur()}${inr(p.from_rate)}` })
+                      : t("See rooms and prices")}
+                  </p>
+                  <p className="whitespace-nowrap text-sm font-medium text-brand-700">
+                    {t("View & book")} →
+                  </p>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PublicBooking() {
   const params = useParams()
   const navigate = useNavigate()
@@ -242,39 +393,91 @@ export default function PublicBooking() {
     }[]
   >([])
   const [data, setData] = useState<Showcase | null>(null)
+  // several properties live on one site: the guest picks one first
+  const [properties, setProperties] = useState<PropertyCard[]>([])
+  const propertySlug = new URLSearchParams(location.search).get("property")
+
+  // What this property can actually sleep. A property page lists several room
+  // types and the guest has not picked one yet, so the roomiest bounds the
+  // search. Without it the page quotes a party the booking then refuses -
+  // the guest gets a price, fills in their details, and only finds out on
+  // submit (Reservation.validate_occupancy is the real guard).
+  const maxAdults = maxCapacity(data?.room_types, "adults_capacity")
+  const maxChildren = maxCapacity(data?.room_types, "children_capacity")
+
+  // The party also arrives in the URL (/book/in/out/adults/children), so clamp
+  // once the capacity is known - otherwise a shared or edited link walks
+  // straight past the inputs.
+  useEffect(() => {
+    if (!maxAdults && !maxChildren) return
+    setSearch((q) => {
+      const adults = clampGuests(q.adults, 1, maxAdults)
+      const children = clampGuests(q.children, 0, maxChildren)
+      return adults === q.adults && children === q.children
+        ? q
+        : { ...q, adults, children }
+    })
+  }, [maxAdults, maxChildren])
   const [search, setSearch] = useState(() => {
     const check_in_date = params.checkin ?? todayPlus(1)
     return {
       check_in_date,
       check_out_date: params.checkout ?? addDays(check_in_date, 2),
       adults: Number(params.adults ?? 2) || 2,
+      pets: 0,
       children: Number(params.children ?? 0) || 0,
     }
   })
   const [results, setResults] = useState<Record<string, StayResult>>({})
+  const [childAgesState, setChildAges] = useState<ChildAge[]>([])
+  const childAges = sizeAges(childAgesState, search.children)
+  const agesMissing = search.children > 0 && !agesToSend(childAges)
   const [booking, setBooking] = useState<string | null>(null) // room type name
   const [form, setForm] = useState({ guest_name: "", phone: "", email: "", meal_plan: "", special_requests: "" })
   // experience add-ons the guest picked: docname -> quantity
   const [addons, setAddons] = useState<Record<string, number>>({})
   const [voucher, setVoucher] = useState("")
   const [voucherMsg, setVoucherMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const [done, setDone] = useState<{ reservation: string; amount: number; verify?: boolean; codeSent?: boolean; minutes?: number; status?: string; advance?: number } | null>(null)
+  const [done, setDone] = useState<{
+    reservation: string
+    amount: number
+    advance_due: number
+    balance_at_hotel: number
+    status: string
+    // nothing to pay online: the room is Held until the guest enters the
+    // emailed code (codeSent false = the email failed, the hotel confirms)
+    verify?: boolean
+    codeSent?: boolean
+    minutes?: number
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const checkOut = search.check_out_date
 
   useEffect(() => {
+    setData(null)
+    setProperty(null)
+    setResults({})
+    setError(null)
     callGuest<{
       mode: string
       property?: string
       sites?: typeof sites
       listing_slug?: string
-    }>("kamra.public_api.catalog_index")
+      properties?: PropertyCard[]
+      ui_locale?: { currency_symbol?: string; locale?: string }
+    }>("kamra.public_api.catalog_index", propertySlug ? { property_slug: propertySlug } : {})
       .then((idx) => {
         setCatalogMode(idx.mode)
         if (idx.mode === "single_listing" && idx.listing_slug) {
           navigate(`/stay/${idx.listing_slug}`, { replace: true })
+          return null
+        }
+        if (idx.mode === "properties") {
+          // nothing to show until the guest picks a property
+          adoptUiLocale(idx.ui_locale)
+          setProperties(idx.properties ?? [])
           return null
         }
         if (idx.mode === "sites" && idx.sites) {
@@ -298,7 +501,7 @@ export default function PublicBooking() {
         setForm((f) => ({ ...f, meal_plan: d.meal_plans[0]?.name ?? "" }))
       })
       .catch((e) => setError(serverError(e)))
-  }, [navigate])
+  }, [navigate, propertySlug])
 
   // stay state lives in the URL - shareable, crawlable, UTM params kept
   useEffect(() => {
@@ -330,7 +533,7 @@ export default function PublicBooking() {
       canonical.rel = "canonical"
       document.head.appendChild(canonical)
     }
-    canonical.href = `${window.location.origin}/book`
+    canonical.href = `${window.location.origin}/book${propertySlug ? `?property=${encodeURIComponent(propertySlug)}` : ""}`
 
     const isStr = p.property_kind === "Short Term Rental"
     const schemaType = isStr ? "VacationRental" : "Hotel"
@@ -386,7 +589,7 @@ export default function PublicBooking() {
     if (!property || catalogMode === "sites") return
     const t = setTimeout(fetchResults, 300)
     return () => clearTimeout(t)
-  }, [property, search, checkOut, catalogMode])
+  }, [property, search, checkOut, catalogMode, childAgesState])
 
   function fetchResults() {
     if (!property) return
@@ -396,6 +599,8 @@ export default function PublicBooking() {
       check_out_date: checkOut,
       adults: search.adults,
       children: search.children,
+      child_ages: agesToSend(childAges),
+      pets: search.pets,
     }).then((rows) => {
       const map: Record<string, StayResult> = {}
       rows.forEach((r) => (map[r.room_type] = r))
@@ -408,7 +613,16 @@ export default function PublicBooking() {
     setBusy(true)
     setError(null)
     try {
-      const res = await callGuest<{ reservation: string; amount_after_tax: number; verify?: boolean; code_sent?: boolean; verify_minutes?: number; status?: string; advance_due?: number }>("kamra.public_api.book",
+      const res = await callGuest<{
+        reservation: string
+        amount_after_tax: number
+        advance_due: number
+        balance_at_hotel: number
+        status: string
+        verify?: boolean
+        code_sent?: boolean
+        verify_minutes?: number
+      }>("kamra.public_api.book",
         {
           property,
           room_type: booking,
@@ -416,6 +630,8 @@ export default function PublicBooking() {
           check_out_date: checkOut,
           adults: search.adults,
           children: search.children,
+          child_ages: agesToSend(childAges),
+          pets: search.pets,
           ...form,
           voucher_code: voucherMsg?.ok ? voucher.trim() : "",
           addons: Object.entries(addons)
@@ -424,9 +640,14 @@ export default function PublicBooking() {
         },
       )
       setDone({
-        reservation: res.reservation, amount: res.amount_after_tax,
-        verify: res.verify, codeSent: res.code_sent, minutes: res.verify_minutes,
-        status: res.status, advance: res.advance_due,
+        reservation: res.reservation,
+        amount: res.amount_after_tax,
+        advance_due: Number(res.advance_due || 0),
+        balance_at_hotel: Number(res.balance_at_hotel ?? res.amount_after_tax ?? 0),
+        status: res.status,
+        verify: res.verify,
+        codeSent: res.code_sent,
+        minutes: res.verify_minutes,
       })
     } catch (e) {
       setError(serverError(e))
@@ -434,6 +655,15 @@ export default function PublicBooking() {
       setBusy(false)
     }
   }
+
+  if (!data && catalogMode === "properties")
+    return (
+      <PropertyChooser
+        properties={properties}
+        stayPath={`/${search.check_in_date}/${checkOut}/${search.adults}/${search.children}`}
+        query={location.search}
+      />
+    )
 
   if (!data)
     return (
@@ -649,7 +879,14 @@ export default function PublicBooking() {
       <div className="mx-auto max-w-5xl px-5 pb-16">
         {/* search bar: one row from lg, guests side by side on a phone */}
         <div className="relative z-10 -mt-8 mb-10 rounded-2xl border border-zinc-200 bg-white p-4 shadow-lg sm:p-5">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-[1fr_1fr_9rem_9rem_auto] lg:items-end">
+          <div
+            className={
+              "grid grid-cols-2 gap-3 lg:items-start " +
+              (p.pets_allowed
+                ? "lg:grid-cols-[1fr_1fr_8rem_8rem_8rem_auto]"
+                : "lg:grid-cols-[1fr_1fr_9rem_9rem_auto]")
+            }
+          >
             <label className="col-span-2 block sm:col-span-1">
               <span className="mb-1 block text-xs font-medium text-zinc-500">{t("Check-in")}</span>
               <input
@@ -684,24 +921,62 @@ export default function PublicBooking() {
                 }
               />
             </label>
-            <Stepper
-              label={t("Adults")}
-              value={search.adults}
-              min={1}
-              less={t("Decrease")}
-              more={t("Increase")}
-              onChange={(adults) => setSearch({ ...search, adults })}
-            />
-            <Stepper
-              label={t("Children")}
-              value={search.children}
-              min={0}
-              less={t("Decrease")}
-              more={t("Increase")}
-              onChange={(children) => setSearch({ ...search, children })}
-            />
+            <div>
+              <Stepper
+                label={t("Adults")}
+                value={search.adults}
+                min={1}
+                max={maxAdults || undefined}
+                less={t("Decrease")}
+                more={t("Increase")}
+                onChange={(adults) =>
+                  setSearch({ ...search, adults: clampGuests(adults, 1, maxAdults) })
+                }
+              />
+              {maxAdults > 0 && search.adults >= maxAdults && (
+                <span className="mt-1 block text-xs text-rose-600">
+                  {t("Sleeps up to {n}", { n: maxAdults })}
+                </span>
+              )}
+            </div>
+            <div>
+              <Stepper
+                label={t("Children")}
+                value={search.children}
+                min={0}
+                max={maxChildren || undefined}
+                less={t("Decrease")}
+                more={t("Increase")}
+                onChange={(children) =>
+                  setSearch({ ...search, children: clampGuests(children, 0, maxChildren) })
+                }
+              />
+              {maxChildren > 0 && search.children >= maxChildren && (
+                <span className="mt-1 block text-xs text-rose-600">
+                  {t("Up to {n} children", { n: maxChildren })}
+                </span>
+              )}
+            </div>
+            {!!p.pets_allowed && (
+              <div className="col-span-2 lg:col-span-1">
+                <Stepper
+                  label={t("Pets")}
+                  value={search.pets}
+                  min={0}
+                  less={t("Decrease")}
+                  more={t("Increase")}
+                  onChange={(pets) => setSearch({ ...search, pets: Math.max(0, pets) })}
+                />
+                {(p.pet_charge || 0) > 0 && (
+                  <span className="mt-1 block text-xs text-zinc-500">
+                    {money(p.pet_charge || 0)} {t(petChargeBasis(p.pet_charge_basis))}
+                  </span>
+                )}
+              </div>
+            )}
+            {/* lines up with the inputs, not with the hints under them */}
             <Button
-              className="col-span-2 h-[46px] justify-center gap-2 px-6 text-base lg:col-span-1"
+              className="col-span-2 h-[46px] justify-center gap-2 px-6 text-base lg:col-span-1 lg:mt-5"
               onClick={() => {
                 fetchResults()
                 document
@@ -713,6 +988,11 @@ export default function PublicBooking() {
               {t("Check availability")}
             </Button>
           </div>
+          {childAges.length > 0 && (
+            <div className="mt-3">
+              <ChildAges ages={childAges} onChange={setChildAges} selectCls={inputCls} />
+            </div>
+          )}
           {minNights > 1 && (
             <p className="mt-2 text-xs text-zinc-500">
               {t("{n}-night minimum stay", { n: minNights })}
@@ -831,7 +1111,7 @@ export default function PublicBooking() {
           </div>
         ) : (
           <div id="stay-results" className="scroll-mt-4">
-            {/* room cards — hotel / single-site catalog */}
+            {/* room cards - hotel / single-site catalog */}
             <div className="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
               <h2 className="text-xl font-semibold tracking-tight text-zinc-900">
                 {isStr ? t("Choose your stay") : t("Choose your room")}
@@ -937,6 +1217,7 @@ export default function PublicBooking() {
                                   { n: r.quote.nights },
                                 )}
                               </p>
+                              <StayNotice row={r} />
                               {(r.quote.cleaning_fee || 0) > 0 && (
                                 <p className="text-xs text-zinc-500">
                                   {t("Includes {amount} cleaning fee", {
@@ -944,11 +1225,31 @@ export default function PublicBooking() {
                                   })}
                                 </p>
                               )}
+                              {(r.quote.pet_charge || 0) > 0 && (
+                                <p className="text-xs text-zinc-500">
+                                  {t(
+                                    search.pets === 1
+                                      ? "Includes {amount} for 1 pet"
+                                      : "Includes {amount} for {n} pets",
+                                    { amount: money(r.quote.pet_charge || 0), n: search.pets },
+                                  )}
+                                </p>
+                              )}
                               {(r.quote.totals?.deposit_required || 0) > 0 && (
                                 <p className="text-xs text-zinc-500">
                                   {t("Refundable deposit {amount}, paid separately", {
                                     amount: money(r.quote.totals?.deposit_required || 0),
                                   })}
+                                </p>
+                              )}
+                              {(r.quote.advance_due || 0) > 0 && (
+                                <p className="text-xs font-medium text-zinc-700">
+                                  {(r.quote.balance_at_hotel || 0) > 0
+                                    ? t("{amount} due now · {balance} at the hotel", {
+                                        amount: money(r.quote.advance_due || 0),
+                                        balance: money(r.quote.balance_at_hotel || 0),
+                                      })
+                                    : t("{amount} due now", { amount: money(r.quote.advance_due || 0) })}
                                 </p>
                               )}
                             </>
@@ -974,7 +1275,7 @@ export default function PublicBooking() {
                           )}
                           <Button
                             className="px-5 py-2.5 text-base"
-                            disabled={!r?.quote}
+                            disabled={!canReserve(r) || agesMissing}
                             onClick={() => setBooking(rt.name)}
                           >
                             {bookCta}
@@ -1011,6 +1312,10 @@ export default function PublicBooking() {
                     (p.security_deposit_amount || 0) > 0 && [
                       t("Security deposit"),
                       t("{amount}, refundable", { amount: money(p.security_deposit_amount) }),
+                    ],
+                    !!p.pets_allowed && (p.pet_charge || 0) > 0 && [
+                      t("Pet charge"),
+                      `${money(p.pet_charge || 0)} ${t(petChargeBasis(p.pet_charge_basis))}`,
                     ],
                     [
                       t("Cancellation"),
@@ -1153,9 +1458,11 @@ export default function PublicBooking() {
               ? t("Confirm your booking")
               : done?.status === "Pending Payment"
                 ? t("Booking held")
-                : done
-                  ? t("Booking confirmed")
-                  : t("Complete your booking")
+                : done?.status === "Requested"
+                  ? t("Request sent")
+                  : done
+                    ? t("Booking confirmed")
+                    : t("Complete your booking")
           }
           description={
             done
@@ -1205,7 +1512,7 @@ export default function PublicBooking() {
               <p className="mt-1 text-sm">
                 {t(
                   "Total {total}. The hotel will send you a payment link for the {advance} advance that confirms this booking.",
-                  { total: money(done.amount), advance: money(done.advance ?? 0) },
+                  { total: money(done.amount), advance: money(done.advance_due) },
                 )}
               </p>
             </div>
@@ -1213,12 +1520,31 @@ export default function PublicBooking() {
             <div className="space-y-3">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-emerald-800">
                 <p className="text-lg font-semibold">{done.reservation}</p>
-                <p className="mt-1 text-sm">
-                  {t(
-                    "Total {total}, payable at the hotel. We've saved your number; the front desk will reach out before arrival.",
-                    { total: money(done.amount) },
-                  )}
-                </p>
+                {done.advance_due > 0 ? (
+                  <div className="mt-1 space-y-1 text-sm">
+                    <p>{t("Total {total}", { total: money(done.amount) })}</p>
+                    <p className="font-semibold">
+                      {t("Advance due now: {amount}", { amount: money(done.advance_due) })}
+                    </p>
+                    {done.balance_at_hotel > 0 && (
+                      <p>
+                        {t("Balance payable at the hotel: {amount}", {
+                          amount: money(done.balance_at_hotel),
+                        })}
+                      </p>
+                    )}
+                    <p>
+                      {t("We've saved your number; the front desk will reach out with payment details and before arrival.")}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm">
+                    {t(
+                      "Total {total}, payable at the hotel. We've saved your number; the front desk will reach out before arrival.",
+                      { total: money(done.amount) },
+                    )}
+                  </p>
+                )}
               </div>
             </div>
           ) : (

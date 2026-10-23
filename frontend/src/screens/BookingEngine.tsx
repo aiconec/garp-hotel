@@ -42,7 +42,7 @@ export default function BookingEngine() {
     setBusy(true)
     setState("idle")
     try {
-      // Only send fields this screen edits — spreading the full Property
+      // Only send fields this screen edits - spreading the full Property
       // doc caused TimestampMismatch / silent failures when uploads had
       // already bumped related File rows or another tab saved.
       const cleanGallery = (doc?.gallery || [])
@@ -471,7 +471,7 @@ export default function BookingEngine() {
                     </div>
                     <p className="mt-1 text-xs text-zinc-400">
                       Buttons, links and highlights on the guest page take this
-                      colour — pick any hex to match the hotel's branding.
+                      colour - pick any hex to match the hotel's branding.
                     </p>
                   </div>
 
@@ -841,7 +841,7 @@ export default function BookingEngine() {
                         onChange={(e) => updateField("page_slug", e.target.value)}
                       />
                       <p className="mt-1 text-xs text-zinc-400">
-                        Used when several properties share one site: /book/your-slug. Single-property tenants use /book and /stay/listing-slug on room types.
+                        Used when several properties share one site: guests reach this property at /book?property=your-slug or /stay/your-slug. Room types have their own /stay/listing-slug.
                       </p>
                     </label>
                   </div>

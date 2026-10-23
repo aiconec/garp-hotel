@@ -1,13 +1,13 @@
 /*  Where this function is, and what's left.
 
     Flat tabs tell you what screens exist. They don't tell you that the
-    quote is unsent, the hall unconfirmed and nothing collected — which is
+    quote is unsent, the hall unconfirmed and nothing collected - which is
     the only thing a banquet manager actually wants to know when they open
     a function.
 
     So the nav is the process, numbered and in order: each step carries a
     tick when it's genuinely done, a live line of what it holds right now,
-    and — when it isn't done — the one thing standing in the way. You can
+    and - when it isn't done - the one thing standing in the way. You can
     still jump anywhere; nothing is locked. A step that isn't ready just
     says so instead of pretending. */
 
@@ -45,7 +45,8 @@ export function stepsFor(fn: FunctionSheet): Step[] {
   const costed = fn.total_cost > 0
   const collected = fn.advance_received > 0
   const paper = Boolean(fn.beo_generated_on)
-  const closed = Boolean(fn.closed_out_on)
+  // a reopened function (Confirmed again) still has its old stamp
+  const closed = Boolean(fn.closed_out_on) && fn.status === "Completed"
 
   return [
     {

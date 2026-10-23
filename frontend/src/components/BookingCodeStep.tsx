@@ -7,6 +7,7 @@ import { useState } from "react"
 import { Button } from "./ui/button"
 import { callGuest } from "../lib/api"
 import { serverError } from "../lib/resource"
+import { useT } from "../lib/i18n"
 
 export function BookingCodeStep({
   reservation,
@@ -23,6 +24,7 @@ export function BookingCodeStep({
   inputCls: string
   onConfirmed: () => void
 }) {
+  const { t } = useT()
   const [code, setCode] = useState("")
   const [sent, setSent] = useState(codeSent)
   const [busy, setBusy] = useState(false)
@@ -59,10 +61,9 @@ export function BookingCodeStep({
   if (!sent)
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-        <p className="font-semibold">{reservation} is held for you</p>
+        <p className="font-semibold">{t("{reservation} is held for you", { reservation })}</p>
         <p className="mt-1">
-          We couldn't email your confirmation code. The hotel will contact you to
-          confirm this booking.
+          {t("We couldn't email your confirmation code. The hotel will contact you to confirm this booking.")}
         </p>
       </div>
     )
@@ -70,9 +71,7 @@ export function BookingCodeStep({
   return (
     <div className="space-y-3">
       <p className="text-sm text-zinc-600">
-        We emailed a 6-digit code to <span className="font-medium text-zinc-900">{email}</span>.
-        Enter it within {minutes} minutes to confirm booking{" "}
-        <span className="font-medium text-zinc-900">{reservation}</span>.
+        {t("We emailed a 6-digit code to {email}. Enter it within {minutes} minutes to confirm booking {reservation}.", { email, minutes, reservation })}
       </p>
       <input
         className={inputCls + " text-center text-lg tracking-[0.4em]"}
@@ -80,7 +79,7 @@ export function BookingCodeStep({
         autoComplete="one-time-code"
         maxLength={6}
         autoFocus
-        aria-label="Booking code"
+        aria-label={t("Booking code")}
         value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
         onKeyDown={(e) => e.key === "Enter" && code.length === 6 && !busy && confirm()}
@@ -91,13 +90,13 @@ export function BookingCodeStep({
         disabled={busy || code.length !== 6}
         onClick={confirm}
       >
-        {busy ? "Confirming…" : "Confirm booking"}
+        {busy ? t("Confirming…") : t("Confirm booking")}
       </Button>
       <p className="text-center text-xs text-zinc-500">
-        {resent ? "A new code is on its way. " : "No email? Check spam, or "}
+        {resent ? t("A new code is on its way.") : t("No email? Check spam, or")}{" "}
         {!resent && (
           <button type="button" className="font-medium text-brand-700 hover:underline" onClick={resend}>
-            send a new code
+            {t("send a new code")}
           </button>
         )}
       </p>
