@@ -16,6 +16,7 @@ from frappe.utils import add_to_date, cint, date_diff, escape_html, now_datetime
 
 from kamra.authz import act_as
 from kamra.booking_slugs import resolve_public_slug, slugify
+from kamra.install import AGENT_EMAIL
 from kamra.site_conf import site_conf
 
 # Anonymous bookings: how long a stay may be and how far ahead it may start.
@@ -50,7 +51,6 @@ def _assert_publicly_bookable(prop, check_in_date: str, check_out_date: str,
 	ahead = cint(site_conf("public_max_days_ahead") or PUBLIC_MAX_DAYS_AHEAD)
 	if date_diff(check_in_date, nowdate()) > ahead:
 		frappe.throw("Bookings that far ahead aren't open yet: please contact the hotel.")
-from kamra.install import AGENT_EMAIL
 
 
 def _room_type_filters(property: str, listing_slug: str | None = None,
