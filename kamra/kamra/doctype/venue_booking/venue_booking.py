@@ -279,10 +279,12 @@ class VenueBooking(Document):
 		if discount < 0:
 			frappe.throw(_("A discount can't be negative."))
 		if discount > subtotal:
+			from kamra.localization import format_money
+
 			frappe.throw(
 				_("The discount ({0}) is more than the quote itself ({1}).")
-				.format(frappe.format_value(float(discount), "Currency"),
-				        frappe.format_value(float(subtotal), "Currency")))
+				.format(format_money(self.property, float(discount)),
+				        format_money(self.property, float(subtotal))))
 		# spread the negotiated reduction across the lines so a mixed-rate
 		# quote (food at 5%, AV at 18%) still taxes each line correctly
 		factor = ((subtotal - discount) / subtotal) if subtotal else Decimal(1)

@@ -12,6 +12,13 @@ from frappe.utils import add_days, getdate, now_datetime, nowdate
 
 from kamra.authz import require_roles
 
+
+def _money(property: str, amount) -> str:
+	"""An amount in the property's own currency and number style."""
+	from kamra.localization import format_money
+
+	return format_money(property, float(amount or 0))
+
 BANQUET_ROLES = ("Front Desk", "Revenue Manager", "Hotel Agent")
 READ_ROLES = BANQUET_ROLES + ("Finance", "Housekeeping")
 
@@ -132,7 +139,7 @@ def notify_departments_on_confirm(doc) -> None:
 		customer=doc.customer_name,
 		venue=doc.venue,
 		date=doc.event_date,
-		total=frappe.format_value(float(doc.grand_total or 0), "Currency"),
+		total=_money(doc.property, doc.grand_total or 0),
 	)
 	roles_notified = set()
 	for role in DEPT_ROLE.values():
@@ -180,7 +187,7 @@ def _quote_html(doc, payload: dict) -> str:
 			f"<tr><td>{frappe.utils.escape_html(str(name))}</td>"
 			f"<td style='text-align:right'>{qty}</td>"
 			f"<td style='text-align:right'>"
-			f"{frappe.format_value(float(amount or 0), 'Currency')}</td></tr>"
+			f"{_money(doc.property, amount or 0)}</td></tr>"
 		)
 	hotel = prop.get("property_name") or prop.get("legal_name") or doc.property
 	return f"""
@@ -202,7 +209,7 @@ def _quote_html(doc, payload: dict) -> str:
 	    <tbody>{rows or '<tr><td colspan="3">See attached details</td></tr>'}</tbody>
 	  </table>
 	  <p><strong>Total:
-	     {frappe.format_value(float(doc.grand_total or 0), 'Currency')}</strong>
+	     {_money(doc.property, doc.grand_total or 0)}</strong>
 	     {" · valid till " + str(doc.quote_valid_till) if doc.quote_valid_till else ""}</p>
 	  <p>Please reply to this email, call us, or message on WhatsApp to confirm
 	     or request changes. Our sales desk will record your response.</p>
@@ -272,7 +279,7 @@ def send_quotation(function: str, channels: str | list | None = None):
 					num=doc.quote_number or doc.name,
 					event=doc.event_name or doc.event_type or "your event",
 					date=doc.event_date,
-					total=frappe.format_value(float(doc.grand_total or 0), "Currency"),
+					total=_money(doc.property, doc.grand_total or 0),
 				)
 				send_outbound(doc.property, "WhatsApp", phone, text)
 				sent.append("whatsapp")

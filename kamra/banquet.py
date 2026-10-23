@@ -46,6 +46,13 @@ from frappe.utils import (
 from kamra.authz import require_roles
 from kamra.settings import get_setting
 
+
+def _money(property: str, amount) -> str:
+	"""An amount in the property's own currency and number style."""
+	from kamra.localization import format_money
+
+	return format_money(property, float(amount or 0))
+
 # who sells and runs functions
 BANQUET_ROLES = ("Front Desk", "Revenue Manager", "Hotel Agent")
 # who may change what things cost
@@ -1071,7 +1078,7 @@ def _function_alerts(doc):
 			            "urgency": "high" if term.status == "Overdue" else "normal",
 			            "message": _("{0}: {1} due {2}.").format(
 				            term.milestone,
-				            frappe.format_value(float(term.amount or 0), "Currency"),
+				            _money(doc.property, term.amount or 0),
 				            term.due_date)})
 	if doc.status == "Confirmed":
 		if 0 <= days_out <= 7 and not doc.beo_generated_on:
@@ -1088,8 +1095,7 @@ def _function_alerts(doc):
 		if 0 <= days_out <= 14 and not float(doc.advance_received or 0):
 			out.append({"kind": "no_advance", "urgency": "high",
 			            "message": _("Nothing received yet against "
-			                        "{0}.").format(frappe.format_value(
-				            float(doc.grand_total or 0), "Currency"))})
+			                        "{0}.").format(_money(doc.property, doc.grand_total or 0))})
 		open_rows = [o for o in doc.open_items if o.status == "Open"]
 		if open_rows and days_out <= 7:
 			out.append({"kind": "open_items", "urgency": "normal",
@@ -1647,8 +1653,8 @@ def close_out(function: str, damage_amount: float = 0,
 	if damage > held and held:
 		frappe.throw(_("Damages of {0} exceed the {1} held. Bill the "
 		              "difference as a charge instead of over-deducting.")
-		             .format(frappe.format_value(damage, "Currency"),
-		                     frappe.format_value(held, "Currency")))
+		             .format(_money(doc.property, damage),
+		                     _money(doc.property, held)))
 	if pax_actual is not None:
 		doc.pax_actual = int(pax_actual)
 
@@ -1703,7 +1709,7 @@ def _reclose(doc, damage_amount, refund_deposit, pax_actual):
 	if int(refund_deposit or 0) and held > 0:
 		frappe.throw(_("{0} of deposit is still held. Record the refund as a "
 		              "receipt before closing again.")
-		             .format(frappe.format_value(held, "Currency")))
+		             .format(_money(doc.property, held)))
 	if pax_actual is not None:
 		doc.pax_actual = int(pax_actual)
 	doc.closed_out_on = now_datetime()
