@@ -219,7 +219,7 @@ export const TOURS: Tour[] = [
       {
         at: "checkin-steps",
         title: "The check-in steps",
-        body: "Guest and IDs, who pays, the room, the deposit, the registration card: your property picks the steps under Settings, Front desk, **Check-in steps**. Tap a step to jump to it.",
+        body: "From the guest's ID and who pays to the room, the deposit, the keys and the Wi-Fi: your property picks the steps under Settings, Front desk, **Check-in steps**. Tap a step to jump to it.",
         optional: true,
         noBack: true,
       },
