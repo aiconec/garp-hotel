@@ -144,7 +144,7 @@ export default function WhatsAppChat() {
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-2xl border border-zinc-200 bg-white">
+          <div className="min-w-0 rounded-2xl border border-zinc-200 bg-white">
             <ul className="max-h-[70vh] divide-y divide-zinc-100 overflow-y-auto">
               {threads.map((thread) => (
                 <li key={thread.number}>
@@ -173,7 +173,7 @@ export default function WhatsAppChat() {
             </ul>
           </div>
 
-          <div className="flex max-h-[70vh] flex-col rounded-2xl border border-zinc-200 bg-white lg:col-span-2">
+          <div className="flex min-w-0 max-h-[70vh] flex-col rounded-2xl border border-zinc-200 bg-white lg:col-span-2">
             {activeThread && (
               <div className="flex items-center gap-2 border-b border-zinc-100 px-4 py-3">
                 <div>
