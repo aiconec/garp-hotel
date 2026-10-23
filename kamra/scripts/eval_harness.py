@@ -18,6 +18,14 @@ P = "EVAL Hotel"
 RESULTS = []
 
 
+def _approved(name: str, args: dict, prop: str = P):
+	"""A chat tool run the way the fork runs one: the model proposes, the
+	signed-in person approves, and the approved arguments execute."""
+	from kamra import assistant
+
+	return assistant._execute(name, assistant._clean_args(name, args, prop), prop)
+
+
 def check(name):
 	def wrap(fn):
 		def run():
@@ -4149,10 +4157,16 @@ def t83():
 			property=P, room_type=RT, check_in_date=ci,
 			check_out_date=add_days(ci, 365), guest_name="Long Stay",
 			phone="+919812300085", email="long@example.com"))
-		assert refused(lambda: public_api.book(
-			property=P, room_type=RT, check_in_date=add_days(nowdate(), 900),
-			check_out_date=add_days(nowdate(), 902), guest_name="Far Ahead",
-			phone="+919812300086", email="far@example.com"))
+		# the run widens the window for upstream's 2031 checks; this is the default
+		wide = frappe.local.conf.pop("hotel_public_max_days_ahead", None)
+		try:
+			assert refused(lambda: public_api.book(
+				property=P, room_type=RT, check_in_date=add_days(nowdate(), 900),
+				check_out_date=add_days(nowdate(), 902), guest_name="Far Ahead",
+				phone="+919812300086", email="far@example.com"))
+		finally:
+			if wide is not None:
+				frappe.local.conf["hotel_public_max_days_ahead"] = wide
 		# a wrong code never confirms the held stay
 		assert refused(lambda: public_api.confirm_booking(out["reservation"], "000000x"))
 	finally:
@@ -4813,9 +4827,8 @@ def t97():
 			assert got.action_channel == "API" and f"[channel: {ch}]" in got.rationale, got
 
 	# the copilot's chat path writes its audit line
-	from kamra import assistant
 	before = frappe.db.count("Agent Action Log", {"action_type": "copilot_create_booking"})
-	assistant._run_tool("create_booking", {
+	_approved("create_booking", {
 		"guest_name": "Eval Chat Guest", "room_type": "EVL",
 		"check_in_date": "2031-05-01", "check_out_date": "2031-05-02"}, P)
 	assert frappe.db.count("Agent Action Log", {"action_type": "copilot_create_booking"}) == before + 1
@@ -4905,30 +4918,34 @@ def t102():
 			assert "already used for a different booking" in str(e), e
 
 
-@check("copilot duplicate: caught on the Chat path, logged as Chat, no phantom Executed row")
+@check("copilot duplicate: the same change proposed twice is one card, runs once, logged once")
 def t103():
+	from unittest.mock import patch
+
 	from kamra import assistant
 
 	frappe.db.set_value("Property", P, "overbooking_pct", 400)
 	args = {"guest_name": "Eval Chat Retry", "room_type": "EVL",
 	        "check_in_date": "2031-09-01", "check_out_date": "2031-09-02"}
+	clean = assistant._clean_args("create_booking", dict(args), P)
 	before = frappe.db.count("Agent Action Log", {"action_type": "copilot_create_booking"})
-	first = assistant._run_tool("create_booking", dict(args), P)
-	again = assistant._run_tool("create_booking", dict(args), P)
-	assert again["reservation"] == first["reservation"] and again.get("duplicate_of_recent"), again
-	assert frappe.db.get_value("Reservation", first["reservation"], "source") == "AI Agent"
+	first = assistant._propose("create_booking", clean, P)
+	again = assistant._propose("create_booking", dict(clean), P)
+	assert first["pending"] and again["id"] == first["id"] and again["repeat"], again
+	# AI is off unless the site config switches it on
+	with patch.object(assistant, "_assert_ai_allowed"):
+		assistant.approve_action(first["id"])
+		try:
+			assistant.approve_action(first["id"])
+			raise AssertionError("one proposal approved twice")
+		except frappe.ValidationError:
+			pass
 	assert frappe.db.count("Agent Action Log", {
-		"action_type": "copilot_create_booking"}) == before + 1, "replay logged as executed"
-	live = frappe.get_meta("Agent Action Log").get_field("action_channel").options.split("\n")
-	for action in ("create_reservation", "agent_duplicate_booking_blocked"):
-		got = frappe.db.get_value("Agent Action Log", {
-			"action_type": action, "reference_name": first["reservation"]},
-			["action_channel", "rationale"], as_dict=True)
-		assert got, f"no {action} row"
-		if "Chat" in live:
-			assert got.action_channel == "Chat", (action, got)
-		else:  # an unmigrated site maps Chat to API and keeps the name
-			assert "[channel: Chat]" in got.rationale, (action, got)
+		"action_type": "copilot_create_booking"}) == before + 1, "ran twice"
+	row = frappe.db.get_value("Agent Action Log", {"action_type": "copilot_create_booking"},
+	                          ["approval_status", "approver"], as_dict=True,
+	                          order_by="creation desc")
+	assert row.approval_status == "Approved" and row.approver == frappe.session.user, row
 
 
 @check("create_group_block resolves room type names and codes; unknown is refused")
@@ -5142,7 +5159,7 @@ def t115():
 		out = public_api.book(
 			property=P, room_type=RT, check_in_date="2031-04-10",
 			check_out_date="2031-04-11", guest_name="Web Staff Session",
-			phone="+919812300115", adults=1, children=0,
+			phone="+919812300115", email="web.staff@example.com", adults=1, children=0,
 		)
 		s = frappe.local.session
 		assert (s.user, s.sid) == ("Administrator", "eval-book-sid"), s
@@ -5340,7 +5357,7 @@ def t150():
 		out = public_api.book(
 			property=P, room_type=RT, check_in_date="2031-05-10",
 			check_out_date="2031-05-11", guest_name="Web Advance Guest",
-			phone="+919812300150", adults=1, children=0,
+			phone="+919812300150", email="web.advance@example.com", adults=1, children=0,
 		)
 		total = float(out["amount_after_tax"])
 		assert out["advance_due"] > 0 and not out["pay_at_hotel"], out
@@ -5825,7 +5842,8 @@ def t162():
 	ci, co = add_days(nowdate(), 30), add_days(nowdate(), 32)
 	out = public_api.book(property=RP, room_type=bed, check_in_date=ci,
 	                      check_out_date=co, guest_name="Request Guest",
-	                      phone="+919812300160", adults=2, children=0)
+	                      phone="+919812300160", email="request.guest@example.com",
+	                      adults=2, children=0)
 	name = out["reservation"]
 	assert frappe.db.get_value("Reservation", name, "status") == "Requested"
 	assert not frappe.db.get_value("Reservation", name, "room")
@@ -6955,13 +6973,15 @@ def t208():
 	_na_till()
 	_na_setting("na_auto_audit_with_blockers", "Hold and alert")
 	try:
+		# the 03:00 run closes yesterday; the fork never closes a day still running
+		yesterday = add_days(nowdate(), -1)
 		with patch("kamra.night_audit.alert_staff") as alert:
-			out = _audit_eval(nowdate(), f"{nowdate()} 03:00",
+			out = _audit_eval(yesterday, f"{nowdate()} 03:00",
 			                  lambda: run_night_audit(P, mode="scheduled"))
 		assert out.get("held"), out
-		assert str(frappe.db.get_value("Property", P, "business_date")) == nowdate()
+		assert str(frappe.db.get_value("Property", P, "business_date")) == yesterday
 		assert not frappe.db.exists("Night Audit Run", {"property": P,
-		                            "business_date": nowdate(), "status": ("!=", "Draft")})
+		                            "business_date": yesterday, "status": ("!=", "Draft")})
 		assert frappe.db.exists("Agent Action Log", {"property": P,
 		                        "action_type": "night_audit_held"})
 		assert alert.called
@@ -6974,7 +6994,7 @@ def t209():
 	from kamra.folio import run_night_audit
 	_na_reset()
 	_na_till()
-	out = _audit_eval(nowdate(), f"{nowdate()} 03:00",
+	out = _audit_eval(add_days(nowdate(), -1), f"{nowdate()} 03:00",
 	                  lambda: run_night_audit(P, mode="scheduled"))
 	assert out.get("status") == "Completed with Warnings", out
 	assert out["exceptions"] >= 1
@@ -7717,8 +7737,7 @@ def t314():
 
 @check("copilot raise_ticket files an AI Agent ticket, like MCP create_ticket")
 def t315():
-	from kamra.assistant import _run_tool
-	out = _run_tool("raise_ticket", {
+	out = _approved("raise_ticket", {
 		"subject": "eval copilot towels", "category": "Housekeeping",
 		"priority": "Low", "source": "Manual"}, P)
 	name = out["ticket"]
@@ -8095,6 +8114,7 @@ def _golive_property():
 	if not frappe.db.exists("Property", GL):
 		frappe.get_doc({
 			"doctype": "Property", "property_name": GL, "city": "Testville",
+			"country": "India", "currency": "INR",
 			"gst_mode": "Fixed", "gst_rate_low": 5, "gst_rate_high": 5,
 		}).insert(ignore_permissions=True)
 	frappe.db.set_value("Property", GL, {"cleaning_fee": 750,
@@ -9838,11 +9858,13 @@ def t262():
 	try:
 		out = public_api.book(
 			property=P, room_type=villa, check_in_date=TUE, check_out_date=WED,
-			guest_name="Eval Big Group", phone="+919812300262", adults=15)
+			guest_name="Eval Big Group", phone="+919812300262",
+			email="big.group@example.com", adults=15)
 		try:
 			public_api.book(
 				property=P, room_type=villa, check_in_date=TUE, check_out_date=WED,
-				guest_name="Eval Too Big", phone="+919812300263", adults=18)
+				guest_name="Eval Too Big", phone="+919812300263",
+				email="too.big@example.com", adults=18)
 			raise AssertionError("18 guests were booked")
 		except frappe.ValidationError as e:
 			assert "cannot accommodate" in str(e), e
@@ -10037,7 +10059,7 @@ def t383():
 
 
 @check("guided tours: progress is per user, a finished tour stays finished, bad input refused")
-def t87():
+def t87_tours():
 	from kamra import tours
 
 	me = frappe.session.user
@@ -10068,6 +10090,9 @@ def execute():
 	# frappe.locale.get_locale_value crashes (UnboundLocalError) when no
 	# language is set on the session — true in bare CI consoles.
 	frappe.local.lang = frappe.local.lang or "en"
+	# the public booking checks book stays years ahead; the fork caps anonymous
+	# bookings at 400 days unless the site config says otherwise
+	frappe.local.conf["hotel_public_max_days_ahead"] = 5000
 	# most checks call api.check_in directly to set up an in-house stay; the
 	# guided check-in's required steps are switched back on by the checks
 	# that test them (t350-t355, _steps_enforced)
@@ -10102,7 +10127,7 @@ def execute():
 		           t360, t361, t362, t363, t364, t365,
 		           t370, t371, t372, t373, t374, t375, t376,
 		           t217, t260, t261, t262, t263, t264,
-		           t380, t381, t382, t383):
+		           t380, t381, t382, t383, t87_tours):
 			fn()
 	finally:
 		frappe.flags.kamra_checkin_steps_off = False
