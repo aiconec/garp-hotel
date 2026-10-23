@@ -64,8 +64,13 @@ const typing = (el: EventTarget | null) =>
 /** Start the tour; returns a function that stops it. */
 export function runTour(tour: Tour, o: RunOptions): () => void {
   const steps = tour.steps.filter((s) => !s.when || s.when(o.ctx))
+  // the page each step lives on; unknown after a click that opens a page
   let route = tour.route
-  const routes = steps.map((s) => (route = s.route ?? route))
+  const routes = steps.map((s, i) => {
+    if (s.route) route = s.route
+    else if (i > 0 && steps[i - 1].leavesPage) route = undefined
+    return route
+  })
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
   let finished = false
@@ -83,8 +88,13 @@ export function runTour(tour: Tour, o: RunOptions): () => void {
   // Optional steps whose anchor is missing get skipped, so "n of m" and the
   // Done button are worked out from what will really show.
   const seen = new Set<number>()
-  const willShow = (j: number, from: number) =>
-    !steps[j].optional || routes[j] !== routes[from] || !!findAnchor(steps[j].at)
+  // A later step whose anchor a click must first open (the check-in form)
+  // counts if that click's step will show.
+  const willShow = (j: number, from: number): boolean =>
+    !steps[j].optional ||
+    routes[j] !== routes[from] ||
+    !!findAnchor(steps[j].at) ||
+    steps.slice(from, j).some((s, k) => s.action && (from + k === from || willShow(from + k, from)))
   const remaining = (i: number) => {
     let n = 0
     for (let j = i + 1; j < steps.length; j++) if (willShow(j, i)) n++
@@ -149,10 +159,11 @@ export function runTour(tour: Tour, o: RunOptions): () => void {
     })
   }
 
+  // what a click opened (a dialog, a page) may still be loading its data
   const wait = (i: number) =>
     !steps[i].at
       ? 0
-      : steps[i].optional && i > 0 && routes[i] === routes[i - 1]
+      : steps[i].optional && i > 0 && routes[i] === routes[i - 1] && !steps[i - 1].action
         ? OPTIONAL_WAIT_MS
         : WAIT_MS
 
@@ -200,14 +211,19 @@ export function runTour(tour: Tour, o: RunOptions): () => void {
         current,
         total: current + left,
       })
-      if (!left) popover.nextButton.innerHTML = esc(o.t("Done"))
+      // An opening card can show before the page's data does, and the total
+      // would jump on the next step; leave the count off until it can't.
+      const unsettled =
+        !steps[i].at &&
+        steps.some((s, j) => j > i && s.optional && routes[j] === routes[i] && !findAnchor(s.at))
+      popover.progress.style.visibility = unsettled ? "hidden" : "visible"
+      // driver.js counts steps behind a click as missing and calls this one
+      // the last; the label comes from what will really follow
+      popover.nextButton.innerHTML = esc(o.t(left ? "Next" : "Done"))
     },
     onNextClick: next,
     onPrevClick: back,
-    onDoneClick: () => {
-      finished = true
-      stop()
-    },
+    onDoneClick: next,
     onCloseClick: () => stop(),
     onDestroyed: () => end(),
   })

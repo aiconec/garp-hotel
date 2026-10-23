@@ -578,6 +578,7 @@ export default function Today() {
                   <Button
                     disabled={busy === row.name}
                     onClick={() => setCheckingIn(row.name)}
+                    data-tour="today-checkin"
                   >
                     {t("Check in")}
                   </Button>

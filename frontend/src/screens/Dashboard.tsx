@@ -238,7 +238,7 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          <div className="flex flex-wrap items-center gap-1.5 text-sm" data-tour="dash-period">
             <select
               className={dateCls}
               value={preset}
@@ -263,7 +263,7 @@ export default function Dashboard() {
             </div>
           </div>
           {multi && (
-            <div className="flex rounded-lg border border-zinc-200 bg-white p-0.5 text-sm">
+            <div className="flex rounded-lg border border-zinc-200 bg-white p-0.5 text-sm" data-tour="dash-scope">
               {(["property", "portfolio"] as const).map((s) => (
                 <button
                   key={s}
@@ -289,7 +289,7 @@ export default function Dashboard() {
 
       {scope === "property" && prop && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" data-tour="dash-kpis">
             <Tile icon={PieChart} label={t("Occupancy")} value={`${prop.period.occupancy_pct}%`}
               sub={isToday ? t("{n} rooms", { n: prop.total_rooms }) : period} tone="text-brand-600" />
             <Tile icon={TrendingUp} label={t("ADR")} value={`${cur()}${inr(prop.period.adr)}`}
@@ -304,7 +304,7 @@ export default function Dashboard() {
               sub={t("receivable")} />
           </div>
 
-          <Card>
+          <Card data-tour="dash-stats">
             <CardHeader>
               <CardTitle>{t("Statistics")}</CardTitle>
               <span className="text-xs text-zinc-400">{rangeLabel(prop.period.from_date, prop.period.to_date)}</span>
@@ -327,7 +327,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2" data-tour="dash-depts">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-1.5"><Brush className="size-4 text-brand-600" />{t("Housekeeping")}</CardTitle>

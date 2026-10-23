@@ -330,7 +330,7 @@ export default function FolioView() {
           <ArrowLeft className="size-4" aria-hidden />
           {t("Billing")}
         </Link>
-        <div className="flex gap-2">
+        <div className="flex gap-2" data-tour="folio-actions">
           {siblings.length > 1 && (
             <div className="flex flex-wrap items-center gap-1 rounded-lg bg-zinc-100 p-1">
               {siblings.map((s) => {
@@ -586,7 +586,7 @@ export default function FolioView() {
       )}
 
       {/* printable document */}
-      <Card className="print:border-0 print:shadow-none">
+      <Card className="print:border-0 print:shadow-none" data-tour="folio-doc">
         <CardContent className="py-6">
           <div className="mb-4 flex items-center justify-center gap-3">
             <span
@@ -1214,7 +1214,7 @@ export default function FolioView() {
 
       {open && (
         <div className="mt-4 grid gap-4 md:grid-cols-2 print:hidden">
-          <Card>
+          <Card data-tour="folio-charge">
             <CardHeader>
               <CardTitle>{t("Post a charge")}</CardTitle>
             </CardHeader>
@@ -1345,7 +1345,7 @@ export default function FolioView() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="folio-payment">
             <CardHeader>
               <CardTitle>{t("Record a payment")}</CardTitle>
             </CardHeader>

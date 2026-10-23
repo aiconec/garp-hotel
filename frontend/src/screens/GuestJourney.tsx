@@ -313,7 +313,7 @@ export default function GuestJourney() {
       </Link>
 
       {/* identity card */}
-      <Card className="mb-4">
+      <Card className="mb-4" data-tour="gj-profile">
         <CardContent className="py-5">
           <div className="flex flex-wrap items-start gap-4">
             <div className="flex size-14 items-center justify-center rounded-2xl bg-brand-50 text-xl font-semibold text-brand-700">
@@ -437,7 +437,7 @@ export default function GuestJourney() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2" data-tour="gj-timeline">
           <CardHeader>
             <CardTitle>Journey</CardTitle>
             <span className="text-xs text-zinc-400">
@@ -499,7 +499,7 @@ export default function GuestJourney() {
         </Card>
 
         <div className="space-y-4">
-          <Card>
+          <Card data-tour="gj-notes">
             <CardHeader>
               <CardTitle>Notes & preferences</CardTitle>
             </CardHeader>
@@ -548,7 +548,7 @@ export default function GuestJourney() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="gj-actions">
             <CardHeader>
               <CardTitle>Profile actions</CardTitle>
             </CardHeader>

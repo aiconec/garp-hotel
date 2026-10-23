@@ -25,6 +25,9 @@ export interface TourStep {
   /** The person clicks the spotlit control (Next clicks it for them), and the
    *  tour moves on once the next step's anchor appears. */
   action?: boolean
+  /** On an action step: the click opens another page (a folio, a guest), so
+   *  later steps stay wherever it lands instead of returning to this one. */
+  leavesPage?: boolean
   /** Let the person use the spotlit control, e.g. type in a field. */
   interactive?: boolean
   /** Skip the step when its anchor never shows (no data, a closed session). */

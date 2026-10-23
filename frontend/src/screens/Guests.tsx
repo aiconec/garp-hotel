@@ -59,7 +59,7 @@ export default function Guests() {
             {t("Every guest, their stays and lifetime value. Click for the full journey.")}
           </p>
         </div>
-        <div className="relative">
+        <div className="relative" data-tour="guests-search">
           <Search
             className="pointer-events-none absolute left-2.5 top-2 size-4 text-zinc-400"
             aria-hidden
@@ -73,7 +73,7 @@ export default function Guests() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-tour="guests-table">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
@@ -90,6 +90,7 @@ export default function Guests() {
               {visible.map((g) => (
                 <tr
                   key={g.name}
+                  data-tour="guest-row"
                   className="cursor-pointer hover:bg-zinc-50"
                   onClick={() => navigate(`/guests/${encodeURIComponent(g.name)}`)}
                 >

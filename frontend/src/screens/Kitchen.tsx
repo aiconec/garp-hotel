@@ -590,20 +590,22 @@ export default function Kitchen() {
           <span className="text-sm font-medium text-zinc-400">{t("{n} tickets", { n: orders.length })}</span>
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm"
-            value={outlet} onChange={(e) => setOutlet(e.target.value)}>
-            <option value="">{t("All outlets")}</option>
-            {outlets.map((o) => <option key={o.name} value={o.name}>{o.outlet_name}</option>)}
-          </select>
-          <div className="flex flex-wrap rounded-lg border border-zinc-200 bg-white p-0.5 text-sm">
-            {["", ...STATIONS].map((s) => (
-              <button key={s} onClick={() => setStation(s)}
-                className={"rounded-md px-3 py-1.5 font-medium " +
-                  (station === s ? "bg-brand-600 text-white" : "text-zinc-600")}>
-                {s ? t(s) : t("All")}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2" data-tour="kds-filters">
+            <select
+              className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm"
+              value={outlet} onChange={(e) => setOutlet(e.target.value)}>
+              <option value="">{t("All outlets")}</option>
+              {outlets.map((o) => <option key={o.name} value={o.name}>{o.outlet_name}</option>)}
+            </select>
+            <div className="flex flex-wrap rounded-lg border border-zinc-200 bg-white p-0.5 text-sm">
+              {["", ...STATIONS].map((s) => (
+                <button key={s} onClick={() => setStation(s)}
+                  className={"rounded-md px-3 py-1.5 font-medium " +
+                    (station === s ? "bg-brand-600 text-white" : "text-zinc-600")}>
+                  {s ? t(s) : t("All")}
+                </button>
+              ))}
+            </div>
           </div>
           {kioskOn && (
             <button type="button" onClick={exitFloor}
@@ -614,12 +616,14 @@ export default function Kitchen() {
           )}
           <button onClick={toggleSound}
             aria-pressed={sound}
+            data-tour="kds-sound"
             className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium",
               sound ? "border-amber-300 bg-amber-50 text-amber-700" : "border-zinc-300 bg-white text-zinc-400")}>
             {sound ? <Bell className="size-4" /> : <BellOff className="size-4" />}
             {t("Sound {state}", { state: sound ? t("on") : t("off") })}
           </button>
           <button onClick={toggleFocus}
+            data-tour="kds-focus"
             className={cn("rounded-lg border p-2",
               kioskOn
                 ? "border-brand-600 bg-brand-50 text-brand-800"
@@ -643,13 +647,13 @@ export default function Kitchen() {
       </div>
 
       {orders.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-zinc-300 p-12 text-center text-zinc-400">
+        <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-zinc-300 p-12 text-center text-zinc-400" data-tour="kds-board">
           {t("No open tickets. The kitchen is clear.")}
         </div>
       ) : (
         <div className={cn("min-h-0 flex-1 overflow-y-auto",
           "grid content-start gap-3",
-          open ? "lg:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
+          open ? "lg:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")} data-tour="kds-board">
           {sorted.map((o) => {
             const secs = firedAgeSecs(o, now)
             const tone = ageTone(secs)
@@ -661,7 +665,7 @@ export default function Kitchen() {
             const tags = [...stations, ...serviceTags(o)]
             const anyCooking = live.some((i) => i.state === "cooking")
             return (
-              <div key={o.name}
+              <div key={o.name} data-tour="kds-ticket"
                 className={cn("flex flex-col overflow-hidden rounded-2xl border-2 bg-white",
                   cancelled.length ? "border-rose-500" : tone.border)}>
                 <div className={cn("h-1.5 w-full", tone.bar)} />
@@ -758,7 +762,7 @@ export default function Kitchen() {
                 ))}
 
                 {anyCooking && (
-                  <div className="p-2 pt-0">
+                  <div className="p-2 pt-0" data-tour="kds-accept">
                     {!o.accepted_at ? (
                       <Button variant="outline" disabled={busy === o.name}
                         onClick={() => act(o.name, "accept_ticket", {})}

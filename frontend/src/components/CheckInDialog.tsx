@@ -121,7 +121,7 @@ export default function CheckInDialog(props: {
       }
       onClose={props.onClose}
       footer={
-        <div className="flex w-full items-center gap-3">
+        <div className="flex w-full items-center gap-3" data-tour="checkin-confirm">
           {error && <p className="text-sm text-rose-600">{error}</p>}
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" onClick={props.onClose}>
@@ -141,7 +141,7 @@ export default function CheckInDialog(props: {
       {!ctx && !error && <p className="text-sm text-zinc-500">{t("Loading…")}</p>}
       {ctx && r && (
         <div className="space-y-5">
-          <section>
+          <section data-tour="checkin-ready">
             <div className="mb-2 flex items-center gap-2">
               <h3 className="text-sm font-semibold text-zinc-700">
                 {t("Registration")}
@@ -189,7 +189,7 @@ export default function CheckInDialog(props: {
             )}
           </section>
 
-          <section>
+          <section data-tour="checkin-room">
             <h3 className="mb-2 text-sm font-semibold text-zinc-700">{t("Room")}</h3>
             {ctx.room_assigned ? (
               <p className="text-sm text-zinc-700">

@@ -211,6 +211,7 @@ export default function Billing() {
                   <tr
                     key={f.name}
                     className="cursor-pointer hover:bg-zinc-50"
+                    data-tour="billing-folio-row"
                     onClick={() => navigate(`/billing/${encodeURIComponent(f.name)}`)}
                   >
                     <td className="whitespace-nowrap py-2.5 pr-4 font-medium">{f.name}</td>
