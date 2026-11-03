@@ -9,7 +9,7 @@ STAFF_ROLES = ("Housekeeping Supervisor",)
 
 
 def after_install():
-	set_site_home_and_favicon()
+	set_site_favicon()
 	ensure_agent_identity()
 	ensure_staff_roles()
 
@@ -94,22 +94,23 @@ def ensure_agent_identity():
 			user.save(ignore_permissions=True)
 
 
-def set_site_home_and_favicon():
-	"""A fresh site shows Frappe's favicon and Desk until Website Settings
-	carries ours. Point home at /kamra (WordPress-style: product, not Desk).
-	Never overrides a hotelier's custom favicon or home page."""
+def set_site_favicon():
+	"""A fresh site shows Frappe's favicon until Website Settings carries
+	ours. Never overrides a favicon already set (on BizConnect tenants
+	garp_branding sets the BizConnect mark).
+
+	The home page is left alone. Hotel is one app of a BizConnect workspace:
+	the site root stays the BizConnect sign-in and desk, and the hotel lives
+	at /hotel, linked from the apps screen. Upstream pointed home at the hotel
+	screen, which swapped a tenant's whole sign-in and landing page the
+	moment Hotel was added (patch bizconnect.desk_is_home undoes it)."""
 	ws = frappe.get_doc("Website Settings")
-	changed = False
-	if not ws.favicon:
-		ws.favicon = "/assets/kamra/kamra-mark.svg"
-		changed = True
-	if (ws.home_page or "").strip() in ("", "login", "me", "index"):
-		ws.home_page = "kamra"
-		changed = True
-	if changed:
-		ws.flags.ignore_mandatory = True
-		ws.save(ignore_permissions=True)
+	if ws.favicon:
+		return
+	ws.favicon = "/assets/kamra/kamra-mark.svg"
+	ws.flags.ignore_mandatory = True
+	ws.save(ignore_permissions=True)
 
 
-# Back-compat for patches that import the old name.
-set_site_favicon = set_site_home_and_favicon
+# Back-compat for the old name, from when install also moved the home page.
+set_site_home_and_favicon = set_site_favicon
