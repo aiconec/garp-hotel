@@ -212,8 +212,9 @@ def _timezone_check() -> dict:
 			"timezone",
 			"Time zone",
 			"attention",
-			f"Property timezone differs from site ({site_tz}). "
-			"Set Time zone under Admin → Settings → Property.",
+			f"Property time zone differs from the workspace clock ({site_tz}). "
+			"Hotel dates follow the property; timestamps follow the "
+			"workspace clock, which an administrator sets in System Settings.",
 			link="/hotel/settings",
 		)
 	return _check(
