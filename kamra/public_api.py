@@ -37,7 +37,7 @@ VERIFY_MAX_TRIES = 5
 PUBLIC_MAX_OPEN_PER_CONTACT = 3      # open website bookings per phone or email
 PUBLIC_MAX_BOOKINGS_PER_IP_DAY = 10  # new website bookings per address, 24 h
 PUBLIC_MAX_UNCONFIRMED_PER_IP = 3    # unverified / unpaid holds per address
-PUBLIC_UNCONFIRMED_SHARE = 0.25      # of a property's rooms, at least 3
+PUBLIC_UNCONFIRMED_SHARE = 0.5       # of a property's rooms, at least 3
 UNCONFIRMED_STATUSES = ("Held", "Pending Payment")
 
 
