@@ -135,12 +135,32 @@ def _generic_write_request() -> bool:
 	return cmd in _GENERIC_WRITE_METHODS
 
 
+def _kamra_initiated() -> bool:
+	"""True when the save that reached guard_money_write was issued by Kamra
+	code: some caller between the framework's entry point and this save is a
+	kamra module (an endpoint, a controller, a scheduled job). Frappe's own
+	generic writers - REST, the Desk form, bulk update and bulk delete (also
+	when they run as a background job), data import, workflow actions - and
+	other apps have no such caller."""
+	import sys
+	frame = sys._getframe(2)  # skip this helper and guard_money_write
+	while frame is not None:
+		module = frame.f_globals.get("__name__") or ""
+		if module == "kamra" or module.startswith("kamra."):
+			return True
+		frame = frame.f_back
+	return False
+
+
 def guard_money_write(doc, method=None):
-	"""doc_events validate/on_trash hook for MONEY_DOCTYPES."""
+	"""doc_events validate/on_trash hook for MONEY_DOCTYPES. It is keyed on
+	the document, not on the request: a save that Kamra did not issue is
+	refused on every path - web request, background job, bulk update, data
+	import - unless a System Manager makes it."""
 	if frappe.flags.in_install or frappe.flags.in_migrate or frappe.flags.in_patch \
-			or frappe.flags.in_test or frappe.flags.in_import:
+			or frappe.flags.in_test:
 		return
-	if not _generic_write_request():
+	if not _generic_write_request() and _kamra_initiated():
 		return
 	if "System Manager" in frappe.get_roles() or frappe.session.user == "Administrator":
 		return
