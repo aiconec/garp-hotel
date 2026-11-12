@@ -109,6 +109,7 @@ class Reservation(Document):
 		self.validate_villa_lockout()
 		self.validate_type_capacity()
 		self.validate_cancellation_path()
+		self.validate_checkout_path()
 		self.apply_pricing()
 
 	def validate_minimum_nights(self):
@@ -147,6 +148,22 @@ class Reservation(Document):
 			frappe.throw(_(
 				"Use the Cancel action (or the cancel_reservation API) so "
 				"the cancellation policy is applied."))
+
+	def validate_checkout_path(self):
+		"""Check-out goes through the Check out action: it posts the last
+		nights, refuses a bill that is still owed (or owes the guest) and
+		discards ID scans under Verify & Discard. Flipping the status field
+		from REST, the Desk form or a bulk edit would skip all three."""
+		if self.is_new() or self.status != "Checked Out":
+			return
+		old = self.get_doc_before_save()
+		if not old or old.status == "Checked Out":
+			return
+		from kamra.authz import kamra_initiated
+		if not kamra_initiated():
+			frappe.throw(_(
+				"Use the Check out action so the bill is settled before "
+				"the guest leaves."))
 
 	def validate_occupancy(self):
 		"""A room only sleeps so many. Checked when the party or room type
