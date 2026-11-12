@@ -4728,6 +4728,12 @@ def my_connector_credentials(property: str):
 	things and nothing more. Regenerating invalidates the old secret.
 
 	Platform-wide / service keys stay on the Developers page (IT admin)."""
+	# the key is a permanent REST credential for the whole site, so with the
+	# MCP connector off (the BizConnect.id default) nobody mints one here
+	from kamra.mcp_http import mcp_disabled
+	if mcp_disabled():
+		frappe.throw("Connector keys are turned off on this site. Ask your "
+		             "administrator.", frappe.PermissionError)
 	user = frappe.session.user
 	api_key = frappe.db.get_value("User", user, "api_key")
 	if not api_key:
