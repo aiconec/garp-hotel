@@ -183,7 +183,7 @@ def notify_booking_confirmed(reservation: str) -> dict:
 	return out
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def send_payment_request(reservation: str, amount, note: str = "") -> dict:
 	"""Desk-triggered: ask the guest for an advance/balance over WhatsApp.
 
