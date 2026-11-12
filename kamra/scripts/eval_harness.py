@@ -1946,16 +1946,18 @@ def t34():
 	finally:
 		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
 
+	# the scan belongs to the stay, never to the shared guest profile
 	f = frappe.get_all("File", filters={
-		"attached_to_doctype": "Guest", "attached_to_name": g,
-		"attached_to_field": "id_file"},
+		"attached_to_doctype": "Reservation", "attached_to_name": res.name,
+		"attached_to_field": "id_document"},
 		fields=["name", "is_private", "file_url"])
 	assert len(f) == 1 and f[0].is_private == 1, f
-	assert frappe.db.get_value("Guest", g, "id_file") == f[0].file_url
+	assert frappe.db.get_value("Reservation", res.name, "id_document") == f[0].file_url
+	assert not frappe.db.get_value("Guest", g, "id_file")
 
-	# the GRC shows the document to the desk
+	# the GRC still tells the desk an ID is on file
 	card = api.registration_card(res.name)
-	assert card["guest"]["id_file"] == f[0].file_url, card["guest"]
+	assert card["readiness"]["id_on_file"], card["readiness"]
 
 	# Verify & Discard: checkout masks the number AND deletes the photo
 	frappe.db.set_value("Property", P, "id_retention", "Verify & Discard")
@@ -2028,7 +2030,7 @@ def t36():
 		                             id_image=img64(), address_image=img64())
 	finally:
 		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
-	assert frappe.db.get_value("Guest", g, "id_file")
+	assert frappe.db.get_value("Reservation", res.name, "id_document")
 	addr1 = frappe.db.get_value("Guest", g, "address_proof_file")
 	assert addr1
 

@@ -454,28 +454,23 @@ def precheckin_info(token: str):
 
 def _save_id_image(guest: str, data_url: str,
                    field: str = "id_file") -> str | None:
-	"""Store a guest document (ID or address proof) as a PRIVATE file
-	attached to their profile (upload or camera capture). Replaces any
-	earlier copy in the same slot; deleted at checkout under
-	Verify & Discard."""
-	import base64
-	import re as _re
-	m = _re.match(r"^data:image/(jpeg|jpg|png|webp);base64,(.+)$",
-	              data_url or "", _re.S)
-	if not m:
-		frappe.throw("The ID photo must be a JPEG, PNG or WebP image.")
-	if len(m.group(2)) > 8_000_000:  # ~6 MB decoded
-		frappe.throw("The ID photo is too large - please retake it.")
-	content = base64.b64decode(m.group(2))
+	"""Store a guest document (address proof) as a PRIVATE file attached to
+	their profile (upload or camera capture). Replaces any earlier copy in
+	the same slot; deleted at checkout under Verify & Discard.
+
+	The bytes written are never the bytes received: the photo is re-encoded
+	(kamra.id_documents._sanitise), which drops EXIF - a phone photo carries
+	the GPS position of the guest's home - and anything appended to it."""
+	from kamra.id_documents import _decode, _sanitise
+	content = _sanitise(_decode(data_url))
 	# replace, never accumulate: one current ID document per guest
 	for f in frappe.get_all("File", filters={
 			"attached_to_doctype": "Guest", "attached_to_name": guest,
 			"attached_to_field": field}, pluck="name"):
 		frappe.delete_doc("File", f, force=True, ignore_permissions=True)
-	ext = "jpg" if m.group(1) in ("jpeg", "jpg") else m.group(1)
 	fdoc = frappe.get_doc({
 		"doctype": "File",
-		"file_name": f"{'address' if field == 'address_proof_file' else 'id'}-{guest}.{ext}",
+		"file_name": f"{'address' if field == 'address_proof_file' else 'id'}-{guest}.jpg",
 		"attached_to_doctype": "Guest",
 		"attached_to_name": guest,
 		"attached_to_field": field,
@@ -500,6 +495,10 @@ def precheckin_submit(token: str, id_type: str, id_number: str,
 	if not id_type or not id_number.strip():
 		frappe.throw("ID type and number are required.")
 	res = _res_by_token(token)
+	# a link from a stay that has ended (or was cancelled) must not rewrite
+	# the guest's identity details or add documents to their profile
+	if res.status not in ("Confirmed", "Checked In"):
+		frappe.throw("This booking is no longer active.")
 	if res.precheckin_status == "Verified":
 		frappe.throw("Check-in details were already verified by the desk.")
 	if id_type != frappe.db.get_value("Guest", res.guest, "id_type"):
@@ -511,7 +510,17 @@ def precheckin_submit(token: str, id_type: str, id_number: str,
 	if signed and not int(consent or 0):
 		frappe.throw("Please accept the registration declaration to sign.")
 
-	id_file = _save_id_image(res.guest, id_image) if id_image else None
+	if id_image:
+		# the ID scan belongs to this stay, not to the shared guest profile:
+		# same store as precheckin_upload_id (re-encoded, on the Reservation,
+		# discarded with the stay)
+		from kamra.id_documents import store_id_document
+		me = frappe.session.user
+		frappe.set_user(GUEST_AGENT)  # nosemgrep: frappe-setuser -- same governed writer as precheckin_upload_id
+		try:
+			store_id_document(res, id_image, source="Guest")
+		finally:
+			frappe.set_user(me)  # nosemgrep: frappe-setuser -- controlled user context switch
 	addr_file = (_save_id_image(res.guest, address_image,
 	                            "address_proof_file")
 	             if address_image else None)
@@ -522,7 +531,6 @@ def precheckin_submit(token: str, id_type: str, id_number: str,
 		"nationality": nationality or None,
 		"address_line": address_line or None,
 		"city": city or None,
-		**({"id_file": id_file} if id_file else {}),
 		**({"address_proof_file": addr_file} if addr_file else {}),
 	})
 	frappe.db.set_value("Reservation", res.name, {
