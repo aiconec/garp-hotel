@@ -21,6 +21,17 @@ class Reservation(Document):
 				   WHERE name = %s""",
 				self.voucher,
 			)
+			# the UPDATE above holds the voucher's row lock until this booking
+			# commits, so two bookings made at once can't both take the last
+			# use: the second one sees the count past the limit and rolls back
+			if not (frappe.flags.in_import or frappe.flags.in_migrate
+			        or frappe.flags.in_install or frappe.flags.in_patch):
+				v = frappe.db.get_value(
+					"Discount Voucher", self.voucher,
+					["times_used", "max_uses", "voucher_code"], as_dict=True)
+				if v and cint(v.max_uses) and cint(v.times_used) > cint(v.max_uses):
+					frappe.throw(
+						_("Voucher {0} has been fully redeemed.").format(v.voucher_code))
 		# WhatsApp booking confirmation - enqueued so a booking never
 		# waits on Meta; skipped entirely unless the property connected
 		# its own number (Channel Provider Connection, Meta Business)

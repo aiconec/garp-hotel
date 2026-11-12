@@ -741,6 +741,11 @@ def book(property: str, room_type: str, check_in_date: str,
 		if a.get("experience") in public_ids
 	]
 
+	voucher_code = (voucher_code or "").strip()
+	if voucher_code:
+		_public_voucher(property, voucher_code,
+		                date_diff(check_out_date, check_in_date))
+
 	from kamra.api import create_booking
 	from kamra.pricing import quote as price_quote
 	from kamra.reservation_state import resolve_instant_status
@@ -947,18 +952,42 @@ def access_info(token: str):
 	return guest_access_info(token)
 
 
+VOUCHER_REFUSED = "This code can't be used for this booking."
+
+
+def _public_voucher(property: str, code: str, nights: int):
+	"""The voucher a website guest may use. Every reason it can't be used -
+	unknown, expired, used up, too few nights, kept for the desk - gets the
+	same answer, so the booking page can't be used to find a hotel's codes."""
+	from kamra.pricing import validate_voucher
+	try:
+		v = validate_voucher(property, code or "", cint(nights) or 1)
+	except frappe.ValidationError:
+		v = None
+		frappe.clear_messages()  # the specific reason must not reach the guest
+	# an unticked "bookable online" keeps a staff / corporate code at the desk
+	if not v or v.get("bookable_online") == 0:
+		frappe.throw(VOUCHER_REFUSED)
+	return v
+
+
 @frappe.whitelist(allow_guest=True)
+@rate_limit(limit=20, seconds=3600)
 def check_voucher(property: str, code: str, nights: int = 1):
 	"""Live promo-code feedback on the booking page. Never throws - returns
 	{ok, message, discount_type, value} so the guest sees a friendly note."""
-	from kamra.pricing import validate_voucher
 	code = (code or "").strip()
 	if not code:
 		return {"ok": False, "message": "Enter a code."}
 	try:
-		v = validate_voucher(property, code, int(nights or 1))
-	except Exception as e:
-		return {"ok": False, "message": str(e)}
+		on = frappe.db.get_value(
+			"Property", property, ["disabled", "booking_engine_enabled"], as_dict=True)
+		if not on or cint(on.disabled) or not cint(on.booking_engine_enabled):
+			frappe.throw(VOUCHER_REFUSED)
+		v = _public_voucher(property, code, nights)
+	except Exception:
+		frappe.clear_messages()
+		return {"ok": False, "message": VOUCHER_REFUSED}
 	from kamra.localization import format_money
 	label = (f"{v.value:g}% off" if v.discount_type == "Percent"
 	         else f"{format_money(property, v.value, 0)} off")

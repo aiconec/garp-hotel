@@ -20,7 +20,8 @@
   "column_break_b",
   "max_uses",
   "times_used",
-  "disabled"
+  "disabled",
+  "bookable_online"
  ],
  "fields": [
   {
@@ -104,12 +105,19 @@
    "fieldname": "disabled",
    "fieldtype": "Check",
    "label": "Disabled"
+  },
+  {
+   "default": "1",
+   "description": "Untick to keep a staff, corporate or partner code for bookings made at the desk. Guests can't use it on the booking page.",
+   "fieldname": "bookable_online",
+   "fieldtype": "Check",
+   "label": "Can be used on the booking page"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-04 16:01:36.709686",
+ "modified": "2026-11-12 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Kamra",
  "name": "Discount Voucher",
