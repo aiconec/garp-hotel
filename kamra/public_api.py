@@ -7,12 +7,15 @@ behind auth. Money still comes only from the pricing engine.
 
 import hashlib
 import hmac
+import math
 import re
 import secrets
 
 import frappe
 from frappe.rate_limiter import rate_limit
-from frappe.utils import add_to_date, cint, date_diff, escape_html, now_datetime, nowdate
+from frappe.utils import (
+	add_to_date, cint, date_diff, escape_html, get_datetime, now_datetime, nowdate,
+)
 
 from kamra.booking_slugs import resolve_public_slug, slugify
 from kamra.site_conf import site_conf
@@ -27,6 +30,15 @@ PUBLIC_MAX_DAYS_AHEAD = 400
 # reservation_state.expire_holds.
 VERIFY_MINUTES = 30
 VERIFY_MAX_TRIES = 5
+# Nobody has paid or been verified when an anonymous booking takes its room,
+# so those bookings are rationed. Each cap can be changed in site_config
+# (hotel_public_max_open_per_contact, hotel_public_max_bookings_per_ip_day,
+# hotel_public_max_unconfirmed_per_ip, hotel_public_max_unconfirmed).
+PUBLIC_MAX_OPEN_PER_CONTACT = 3      # open website bookings per phone or email
+PUBLIC_MAX_BOOKINGS_PER_IP_DAY = 10  # new website bookings per address, 24 h
+PUBLIC_MAX_UNCONFIRMED_PER_IP = 3    # unverified / unpaid holds per address
+PUBLIC_UNCONFIRMED_SHARE = 0.25      # of a property's rooms, at least 3
+UNCONFIRMED_STATUSES = ("Held", "Pending Payment")
 
 
 def _assert_publicly_bookable(prop, check_in_date: str, check_out_date: str,
@@ -49,6 +61,91 @@ def _assert_publicly_bookable(prop, check_in_date: str, check_out_date: str,
 	ahead = cint(site_conf("public_max_days_ahead") or PUBLIC_MAX_DAYS_AHEAD)
 	if date_diff(check_in_date, nowdate()) > ahead:
 		frappe.throw("Bookings that far ahead aren't open yet: please contact the hotel.")
+
+
+def _contact_keys(phone: str | None, email: str | None) -> set[str]:
+	"""A phone and an email in the form two spellings of the same contact
+	share: the last 9 digits ("+62 812-3456-7890" and "081234567890"), and
+	the mailbox without its "+tag"."""
+	keys = set()
+	digits = re.sub(r"\D", "", phone or "")
+	if len(digits) >= 7:
+		keys.add("p:" + digits[-9:])
+	local, _, domain = (email or "").strip().lower().partition("@")
+	if local and domain:
+		keys.add(f"e:{local.split('+', 1)[0]}@{domain}")
+	return keys
+
+
+def _ip_bookings_key() -> str | None:
+	ip = getattr(frappe.local, "request_ip", None)
+	return f"kamra:public_bookings:{ip}" if ip else None
+
+
+def _recent_ip_bookings() -> list:
+	"""[timestamp, reservation] for this address's website bookings of the
+	last 24 hours."""
+	key = _ip_bookings_key()
+	if not key:
+		return []
+	since = add_to_date(now_datetime(), hours=-24)
+	return [r for r in (frappe.cache.get_value(key) or [])
+	        if get_datetime(r[0]) > since]
+
+
+def _note_ip_booking(reservation: str) -> None:
+	key = _ip_bookings_key()
+	if key:
+		frappe.cache.set_value(
+			key, [*_recent_ip_bookings(), [str(now_datetime()), reservation]],
+			expires_in_sec=24 * 3600)
+
+
+def _assert_booking_quota(property: str, phone: str, email: str) -> None:
+	"""An anonymous caller can take rooms off sale (and off the OTAs) with
+	nothing but an email address, so how many unguaranteed website bookings
+	one address, one contact and one property can have open is capped. Real
+	guests stay far below every cap; larger parties book through the hotel."""
+	busy = "Online booking is busy right now. Please try again in a few minutes or contact the hotel."
+
+	# one address: bookings per day, and holds nobody has verified or paid yet
+	recent = _recent_ip_bookings()
+	if len(recent) >= cint(site_conf("public_max_bookings_per_ip_day")
+	                       or PUBLIC_MAX_BOOKINGS_PER_IP_DAY):
+		frappe.throw("That's the most bookings we can take online from one "
+		             "connection in a day. Please contact the hotel.")
+	if recent and frappe.db.count("Reservation", {
+			"name": ("in", [r[1] for r in recent]),
+			"status": ("in", UNCONFIRMED_STATUSES)}) >= cint(
+				site_conf("public_max_unconfirmed_per_ip")
+				or PUBLIC_MAX_UNCONFIRMED_PER_IP):
+		frappe.throw("Please confirm or pay for the bookings you've just "
+		             "made before making another.")
+
+	# one property: holds that nobody has verified or paid yet
+	cap = cint(site_conf("public_max_unconfirmed")) or max(3, math.ceil(
+		frappe.db.count("Room", {"property": property}) * PUBLIC_UNCONFIRMED_SHARE))
+	if frappe.db.count("Reservation", {
+			"property": property, "source": "Website",
+			"status": ("in", UNCONFIRMED_STATUSES)}) >= cap:
+		frappe.throw(busy)
+
+	# one contact: open website bookings that haven't arrived yet
+	mine = _contact_keys(phone, email)
+	open_rows = frappe.db.sql(
+		"""SELECT g.phone, g.email FROM `tabReservation` r
+		   JOIN `tabGuest` g ON g.name = r.guest
+		   WHERE r.source = 'Website'
+		     AND r.status IN ('Held', 'Pending Payment', 'Confirmed', 'Requested')
+		     AND r.check_out_date >= %s
+		   ORDER BY r.creation DESC LIMIT 2000""",
+		(nowdate(),), as_dict=True)
+	same = sum(1 for row in open_rows
+	           if mine & _contact_keys(row.phone, row.email))
+	if same >= cint(site_conf("public_max_open_per_contact")
+	                or PUBLIC_MAX_OPEN_PER_CONTACT):
+		frappe.throw("You already have bookings open with this phone or "
+		             "email. Please contact the hotel to book more rooms.")
 
 
 def _room_type_filters(property: str, listing_slug: str | None = None,
@@ -756,11 +853,16 @@ def book(property: str, room_type: str, check_in_date: str,
 
 	from kamra.api import create_booking
 	from kamra.pricing import quote as price_quote
-	from kamra.reservation_state import resolve_instant_status
+	from kamra.reservation_state import find_by_idempotency, resolve_instant_status
 
 	mode = getattr(prop, "booking_mode", None) or "Instant"
 	hold_minutes = cint(getattr(prop, "hold_minutes", None) or 120)
 	key = (idempotency_key or "").strip() or None
+	# a retry of a booking that already exists is answered from that booking
+	# (create_booking), so it takes nothing new and needs no quota
+	replay = bool(key and find_by_idempotency(property, key))
+	if not replay:
+		_assert_booking_quota(property, phone, email)
 
 	# Peek at payment terms before insert so Instant can choose status.
 	q = price_quote(
@@ -837,6 +939,8 @@ def book(property: str, room_type: str, check_in_date: str,
 		frappe.db.commit()  # nosemgrep: frappe-manual-commit -- persists the completed operation before returning to an external/public caller; reviewed as intentional
 	finally:
 		frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
+	if not result.get("idempotent_replay"):
+		_note_ip_booking(result["reservation"])
 
 	code_sent = _send_booking_code(result["reservation"], email, prop) if verify else False
 	if verify and not code_sent:

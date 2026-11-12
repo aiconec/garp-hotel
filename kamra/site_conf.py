@@ -16,6 +16,10 @@ KEYS = (
 	"mcp_disabled",
 	"public_max_nights",
 	"public_max_days_ahead",
+	"public_max_open_per_contact",
+	"public_max_bookings_per_ip_day",
+	"public_max_unconfirmed_per_ip",
+	"public_max_unconfirmed",
 	"razorpay_signup_url",
 	"cashfree_signup_url",
 )
