@@ -4,7 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, date_diff, formatdate, now_datetime, today
+from frappe.utils import cint, date_diff, flt, formatdate, now_datetime, today
 
 
 class Reservation(Document):
@@ -110,6 +110,7 @@ class Reservation(Document):
 		self.validate_type_capacity()
 		self.validate_cancellation_path()
 		self.validate_checkout_path()
+		self.validate_manual_pricing()
 		self.apply_pricing()
 
 	def validate_minimum_nights(self):
@@ -164,6 +165,36 @@ class Reservation(Document):
 			frappe.throw(_(
 				"Use the Check out action so the bill is settled before "
 				"the guest leaves."))
+
+	def validate_manual_pricing(self):
+		"""Automatic pricing off with hand-set amounts is a rate override.
+		Hotel's own writers (OTA bookings, the booking import, group rows)
+		set negotiated totals through their endpoints; over REST, the Desk
+		form or a bulk edit it needs a supervisor whenever the hotel's
+		Rate Change reason codes ask for one (kamra.ledger.approval_needed).
+		A booking that is already hand-priced can still be saved by anyone
+		as long as its money is left alone."""
+		if cint(self.get("auto_price")):
+			return
+		old = None if self.is_new() else self.get_doc_before_save()
+		if old and not cint(old.get("auto_price")) and not any(
+			abs(flt(old.get(f)) - flt(self.get(f))) > 0.005
+			for f in ("amount_before_tax", "tax_amount", "amount_after_tax",
+			          "discount_amount")
+		):
+			return
+		from kamra.authz import kamra_initiated
+		if kamra_initiated():
+			return
+		from kamra.ledger import (
+			approval_needed, ensure_default_reason_codes, is_supervisor)
+		if is_supervisor():
+			return
+		ensure_default_reason_codes()
+		if approval_needed("Rate Change"):
+			frappe.throw(_(
+				"A manual rate needs a supervisor (Hotel Admin or Finance). "
+				"Leave automatic pricing on, or ask a supervisor to set the rate."))
 
 	def validate_occupancy(self):
 		"""A room only sleeps so many. Checked when the party or room type

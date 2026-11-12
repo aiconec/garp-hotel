@@ -3,12 +3,13 @@ paths, but raw-SQL reads and db.set_value writes sail past them. Every
 whitelisted Kamra endpoint therefore declares who may call it - and,
 for staff restricted to some properties, which properties it may touch."""
 
+import hmac
 import inspect
 import json
 from functools import wraps
 
 import frappe
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_to_date, cint, now_datetime
 
 ADMIN = ("System Manager", "Administrator", "Hotel Admin")
 
@@ -372,6 +373,33 @@ def require_cashier_pin(property: str, pin=None):
 		doc.locked_until = None
 		doc.save(ignore_permissions=True)
 	frappe.cache.set_value(cache_key, 1, expires_in_sec=PIN_LOCK_MINUTES * 60)
+
+
+def verify_user_pin(user: str, pin) -> bool:
+	"""Check `pin` against the cashier PIN of `user` - a named person, not
+	the session user. For a supervisor approving an action at someone else's
+	terminal. Always checked, whether or not the property uses cashier PINs.
+
+	Wrong tries are counted in the cache, not on the Cashier PIN row: the
+	refusal that follows rolls the request's database writes back, and a
+	count that rolls back would let a cashier guess a supervisor's PIN
+	without limit. Five wrong tries lock that PIN for approvals for
+	PIN_LOCK_MINUTES."""
+	fails_key = f"kamra_supervisor_pin_fails:{user}"
+	if cint(frappe.cache.get_value(fails_key)) >= PIN_MAX_ATTEMPTS:
+		frappe.throw("PIN_LOCKED: too many wrong attempts - try again later.")
+	stored = None
+	if pin and frappe.db.exists("Cashier PIN", user) and not frappe.db.get_value(
+			"Cashier PIN", user, "must_reset"):
+		from frappe.utils.password import get_decrypted_password
+		stored = get_decrypted_password("Cashier PIN", user, "pin",
+		                                raise_exception=False)
+	if stored and hmac.compare_digest(str(pin).strip().encode(), str(stored).encode()):
+		frappe.cache.delete_value(fails_key)
+		return True
+	frappe.cache.set_value(fails_key, cint(frappe.cache.get_value(fails_key)) + 1,
+	                       expires_in_sec=PIN_LOCK_MINUTES * 60)
+	return False
 
 
 def unlock_cashier_session(property: str, pin: str) -> dict:

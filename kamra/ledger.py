@@ -959,33 +959,81 @@ def list_reason_codes(category: str | None = None):
 	)
 
 
+SUPERVISOR_ROLES = ("Hotel Admin", "Finance", "System Manager")
+SUPERVISOR_REQUIRED = (
+	"SUPERVISOR_REQUIRED: this needs a supervisor (Hotel Admin or Finance). "
+	"Ask one to do it from their own sign-in, or to approve it with their "
+	"sign-in name and PIN.")
+
+
+def is_supervisor(user: str | None = None) -> bool:
+	user = user or frappe.session.user
+	return user == "Administrator" or bool(
+		set(SUPERVISOR_ROLES) & set(frappe.get_roles(user)))
+
+
+def approval_needed(category: str, reason_code: str | None = None) -> bool:
+	"""Whether a void / refund / adjustment / NC / rate change with this
+	reason needs a supervisor. A reason code answers for itself. A reason
+	without a code counts as the strictest live code of its category, so
+	typing a reason can never sidestep a code the hotel flagged."""
+	if reason_code:
+		return bool(frappe.db.get_value(
+			"Reason Code", reason_code, "requires_supervisor"))
+	return bool(frappe.db.exists("Reason Code", {
+		"category": category, "requires_supervisor": 1, "disabled": 0}))
+
+
+def require_supervisor(category: str, property: str | None = None,
+                       supervisor_user: str | None = None,
+                       supervisor_pin: str | None = None) -> str:
+	"""A supervisor approves: the caller, when they hold a supervisor role,
+	else a second person - a different, enabled user with a supervisor role
+	and access to the property, proved by that person's own cashier PIN.
+	Returns who approved."""
+	me = frappe.session.user
+	if is_supervisor(me):
+		return me
+	sup = (supervisor_user or "").strip()
+	if not sup or not supervisor_pin:
+		frappe.throw(SUPERVISOR_REQUIRED)
+	from kamra.authz import restricted_properties, verify_user_pin
+	ok = (
+		sup != me
+		and bool(frappe.db.get_value("User", {"name": sup, "enabled": 1}))
+		and is_supervisor(sup)
+	)
+	if ok and property:
+		allowed = restricted_properties(sup)
+		ok = allowed is None or property in allowed
+	# one answer for an unknown name, a non-supervisor and a wrong PIN
+	if not ok or not verify_user_pin(sup, supervisor_pin):
+		frappe.throw("That supervisor sign-in or PIN isn't right.")
+	from kamra.savings import log_action
+	log_action("supervisor_approval", "User", sup, property,
+	           rationale=f"{category} approved for {me}", approver=sup)
+	return sup
+
+
 def require_reason(category: str, reason_code: str | None, free_text: str = "",
-                   supervisor_pin: str | None = None, property: str | None = None):
-	"""Validate a reason code; if it requires supervisor, check supervisor PIN."""
+                   supervisor_pin: str | None = None, property: str | None = None,
+                   supervisor_user: str | None = None):
+	"""A reason is mandatory, a reason code must be a live code of this
+	category, and when the reason needs a supervisor (approval_needed) one
+	has to approve (require_supervisor)."""
 	ensure_default_reason_codes()
 	if not reason_code and not (free_text or "").strip():
 		frappe.throw("A reason code or reason text is required.")
-	if reason_code and frappe.db.exists("Reason Code", reason_code):
+	if reason_code:
 		row = frappe.db.get_value(
 			"Reason Code", reason_code,
 			["category", "requires_supervisor", "disabled"], as_dict=True)
+		if not row:
+			frappe.throw("That reason code doesn't exist.")
 		if row.disabled:
 			frappe.throw("That reason code is disabled.")
 		if row.category != category:
 			frappe.throw(f"Reason code is for {row.category}, not {category}.")
-		if row.requires_supervisor:
-			# Supervisor = Hotel Admin PIN or a second user's PIN via pin check
-			if not supervisor_pin:
-				frappe.throw("SUPERVISOR_PIN_REQUIRED: this reason needs approval.")
-			# Accept any valid cashier PIN from a Finance/Admin user by
-			# temporarily validating against the current user's PIN is wrong;
-			# instead require the property's require_cashier_pin path with a
-			# flag. Practical approach: Hotel Admin / Finance role + their PIN.
-			roles = set(frappe.get_roles())
-			if not (roles & {"Hotel Admin", "Finance", "System Manager",
-			                 "Administrator"}):
-				frappe.throw("Supervisor role required for this reason.")
-			from kamra.authz import require_cashier_pin
-			if property:
-				require_cashier_pin(property, supervisor_pin)
+	if approval_needed(category, reason_code):
+		require_supervisor(category, property, supervisor_user, supervisor_pin)
 	return reason_code or free_text.strip()[:140]

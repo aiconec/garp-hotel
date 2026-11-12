@@ -478,10 +478,30 @@ def confirm_order(order: str):
 
 @frappe.whitelist(methods=["POST"])
 @require_roles(*POS_ROLES)
-def apply_discount(order: str, amount: float, reason: str = ""):
+def apply_discount(order: str, amount: float, reason: str = "",
+                   reason_code: str | None = None,
+                   supervisor_pin: str | None = None,
+                   supervisor_user: str | None = None):
 	"""The guest-discount popup - a captain grants a discount with a reason."""
 	doc = frappe.get_doc("POS Order", order)
-	doc.discount_amount = float(amount or 0)
+	amount = float(amount or 0)
+	subtotal = sum(float(it.qty or 1) * float(it.rate or 0)
+	               for it in doc.items if not it.voided)
+	if amount > 0 and subtotal > 0:
+		from kamra.ledger import require_reason, require_supervisor
+		from kamra.site_conf import site_conf
+		# site_config hotel_pos_discount_approval_pct: partial discounts above
+		# this share of the bill need a supervisor too (unset = no limit)
+		limit = float(site_conf("pos_discount_approval_pct") or 0)
+		if amount >= subtotal:
+			# a discount that takes the whole bill is a comp: the NC gate
+			require_reason("NC", reason_code, reason or "Full discount",
+			               supervisor_pin=supervisor_pin, property=doc.property,
+			               supervisor_user=supervisor_user)
+		elif limit and amount * 100 > limit * subtotal:
+			require_supervisor("Discount", doc.property,
+			                   supervisor_user, supervisor_pin)
+	doc.discount_amount = amount
 	doc.discount_reason = reason or None
 	doc.save()
 	return {"ok": True, "discount": doc.discount_amount,
@@ -779,7 +799,10 @@ def pay_order(order: str, mode: str, pin: str | None = None):
 
 @frappe.whitelist(methods=["POST"])
 @require_roles(*POS_ROLES)
-def mark_nc(order: str, authorized_by: str, note: str = "", undo: int = 0):
+def mark_nc(order: str, authorized_by: str, note: str = "", undo: int = 0,
+            reason_code: str | None = None,
+            supervisor_pin: str | None = None,
+            supervisor_user: str | None = None):
 	"""Mark a bill NC (no charge / complimentary). Needs who authorized it
 	(captain, chef, GM, management…) and takes a free-text reference (the
 	occasion, the complaint ticket, the promise made). The items still fire
@@ -795,6 +818,12 @@ def mark_nc(order: str, authorized_by: str, note: str = "", undo: int = 0):
 	else:
 		if not (authorized_by or "").strip():
 			frappe.throw(_("Who authorized the NC? (captain / chef / GM…)"))
+		# a typed name is a note, not an approval: the same gate as comps
+		# on a folio decides whether a supervisor has to approve
+		from kamra.ledger import require_reason
+		require_reason("NC", reason_code, authorized_by,
+		               supervisor_pin=supervisor_pin, property=doc.property,
+		               supervisor_user=supervisor_user)
 		doc.nc = 1
 		doc.nc_authorized_by = authorized_by.strip()[:80]
 		doc.nc_note = (note or "").strip()[:200] or None

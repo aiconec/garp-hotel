@@ -1446,7 +1446,8 @@ def add_folio_payment(folio: str, mode: str, amount: float,
 def refund_folio_payment(folio: str, amount: float, mode: str,
                          reason: str, pin: str | None = None,
                          reason_code: str | None = None,
-                         supervisor_pin: str | None = None):
+                         supervisor_pin: str | None = None,
+                         supervisor_user: str | None = None):
 	"""Give money back on an open folio - a held security deposit at
 	checkout, or an over-collected advance. Stored as a negative ledger
 	row so every balance still sums exactly; a reason is mandatory."""
@@ -1462,7 +1463,8 @@ def refund_folio_payment(folio: str, amount: float, mode: str,
 	from kamra.ledger import require_reason
 	reason_text = require_reason(
 		"Refund", reason_code, reason or "",
-		supervisor_pin=supervisor_pin, property=doc.property)
+		supervisor_pin=supervisor_pin, property=doc.property,
+		supervisor_user=supervisor_user)
 	received = sum(float(p.amount or 0) for p in doc.payments
 	               if float(p.amount or 0) > 0)
 	refunded = -sum(float(p.amount or 0) for p in doc.payments
@@ -1572,7 +1574,8 @@ def _resolve_charge_gst(property: str, charge_type: str, description: str,
 def void_folio_charge(folio: str, charge_row: str, reason: str = "",
                       pin: str | None = None,
                       reason_code: str | None = None,
-                      supervisor_pin: str | None = None):
+                      supervisor_pin: str | None = None,
+                      supervisor_user: str | None = None):
 	"""Remove a wrong charge line from an open folio (the bill-correction
 	path). PIN-guarded like other money actions for humans; agents are
 	accountable through the action log. Posts a ledger reversal."""
@@ -1581,7 +1584,8 @@ def void_folio_charge(folio: str, charge_row: str, reason: str = "",
 	from kamra.ledger import require_reason, reverse_ledger_for_charge
 	reason_text = require_reason(
 		"Void", reason_code, reason or "",
-		supervisor_pin=supervisor_pin, property=prop)
+		supervisor_pin=supervisor_pin, property=prop,
+		supervisor_user=supervisor_user)
 	try:
 		reverse_ledger_for_charge(prop, folio, charge_row, str(reason_text))
 	except Exception:
@@ -1852,9 +1856,19 @@ def close_folio(folio: str, pin: str | None = None):
 @frappe.whitelist(methods=["POST"])
 @require_roles("Finance", "Front Desk", "Hotel Agent")
 def post_allowance(folio: str, amount: float, reason: str,
-                   gst_rate: float = 0, pin: str | None = None):
+                   gst_rate: float = 0, pin: str | None = None,
+                   reason_code: str | None = None,
+                   supervisor_pin: str | None = None,
+                   supervisor_user: str | None = None):
 	"""Write off part of a bill against a specific folio, with a reason."""
 	_pin_guard(folio, pin)
+	# a write-off is a comp: same approval gate as voids and refunds
+	from kamra.ledger import require_reason
+	require_reason(
+		"Adjust", reason_code, reason or "",
+		supervisor_pin=supervisor_pin,
+		property=frappe.db.get_value("Folio", folio, "property"),
+		supervisor_user=supervisor_user)
 	from kamra.folio import post_allowance as _allow
 	_allow(folio, float(amount), reason, float(gst_rate or 0))
 	from kamra.savings import log_action

@@ -20,6 +20,7 @@ KEYS = (
 	"public_max_bookings_per_ip_day",
 	"public_max_unconfirmed_per_ip",
 	"public_max_unconfirmed",
+	"pos_discount_approval_pct",
 	"razorpay_signup_url",
 	"cashfree_signup_url",
 )
