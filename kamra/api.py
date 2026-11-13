@@ -3473,7 +3473,8 @@ def send_precheckin_link(reservation: str, channel: str = "WhatsApp"):
 	the desk to share. Marks when it went out so the arrivals board can show it."""
 	res = frappe.db.get_value(
 		"Reservation", reservation,
-		["name", "property", "guest", "guest_name", "precheckin_token"],
+		["name", "property", "guest", "guest_name", "precheckin_token",
+		 "source", "advance_paid"],
 		as_dict=True)
 	if not res:
 		frappe.throw("Reservation not found.")
@@ -3488,8 +3489,9 @@ def send_precheckin_link(reservation: str, channel: str = "WhatsApp"):
 	if phone:
 		try:
 			from kamra.agents_channels import send_outbound
+			from kamra.whatsapp import greeting_name
 			send_outbound(res.property, channel, phone,
-			              f"Hi {res.guest_name}, check in early and skip the "
+			              f"Hi {greeting_name(res)}, check in early and skip the "
 			              f"front-desk queue for your stay: {link}")
 			sent = True
 		except Exception:

@@ -2817,6 +2817,63 @@ def t48():
 		whatsapp._post_graph = real_post
 
 
+@check("WhatsApp: an unpaid website booking is greeted as Guest, never by the name typed")
+def t94():
+	"""Anyone could book with phone=<victim> and a guest name that reads like
+	a phishing text, confirm with their own email, and the hotel's verified
+	number sent that text to the victim."""
+	import json
+
+	# nosemgrep: frappe-monkey-patching-not-allowed -- offline eval harness stubs the outbound transport for tests; not a production code path
+	from kamra import whatsapp
+
+	if not whatsapp.has_connection(P):
+		frappe.get_doc({
+			"doctype": "Channel Provider Connection", "property": P,
+			"channel": "WhatsApp", "provider": "Meta Business", "active": 1,
+			"phone_number": "+91 98450 00094", "external_account_id": "eval-phone-94",
+			"credentials": "eval-token", "webhook_secret": "eval-verify-94",
+			"tpl_booking_confirmation": "kamra_booking_confirmation",
+			"tpl_precheckin": "kamra_precheckin_link",
+		}).insert(ignore_permissions=True)
+	bait = "Akun Anda diblokir buka bit.ly/x"
+
+	def booking(source, phone):
+		g = _guest(bait, phone)
+		return frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g, "room_type": RT,
+			"check_in_date": add_days(nowdate(), 60), "check_out_date": add_days(nowdate(), 61),
+			"adults": 2, "auto_price": 1, "source": source,
+		}).insert(ignore_permissions=True)
+
+	sent = []
+	real_post = whatsapp._post_graph
+	whatsapp._post_graph = lambda c, payload: (sent.append(payload) or (True, f"wamid.v12.{len(sent)}"))
+	try:
+		web = booking("Website", "919812340941")
+		assert whatsapp.notify_booking_confirmed(web.name).get("sent")
+		names = [p_["template"]["components"][0]["parameters"][0]["text"] for p_ in sent]
+		assert names and all(n == "Guest" for n in names), names
+		assert bait not in json.dumps(sent), "the typed name reached the phone"
+		# the self check-in link still goes, so a real guest gets it
+		if len(sent) > 1:
+			assert "/hotel/checkin/" in json.dumps(sent[1])
+
+		# a payment stands behind it: the guest's name again
+		sent.clear()
+		frappe.db.set_value("Reservation", web.name, "advance_paid", 500)
+		whatsapp.notify_booking_confirmed(web.name)
+		assert sent[0]["template"]["components"][0]["parameters"][0]["text"] == web.guest_name
+
+		# the desk's own bookings are unchanged
+		sent.clear()
+		desk = booking("Manual", "919812340942")
+		whatsapp.notify_booking_confirmed(desk.name)
+		assert sent[0]["template"]["components"][0]["parameters"][0]["text"] == desk.guest_name
+	finally:
+		whatsapp._post_graph = real_post
+
+
 @check("whitelist audit: every endpoint the frontend calls is callable")
 def t49():
 	"""Guards against decorator orphaning: inserting a helper between a
@@ -4309,7 +4366,7 @@ def execute():
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
 		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87,
-		           t88, t89, t90, t91, t92, t93):
+		           t88, t89, t90, t91, t92, t93, t94):
 			fn()
 	finally:
 		frappe.db.commit = real_commit

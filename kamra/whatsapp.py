@@ -151,11 +151,26 @@ def has_connection(property: str) -> bool:
 		 "provider": "Meta Business", "active": 1}))
 
 
+def greeting_name(res) -> str:
+	"""The name a message to the guest's phone greets them by.
+
+	A website booking carries whatever name and phone the booker typed, and
+	the emailed code only proves the booker's own email. Greeting that name
+	would send their text ("Your account is blocked, open bit.ly/...") from
+	the hotel's verified number to any phone. Until a payment stands behind
+	the booking it greets a plain "Guest"; the message itself (property,
+	dates, the self check-in link) still goes, so a real guest gets it."""
+	if res.get("source") == "Website" and not float(res.get("advance_paid") or 0):
+		return "Guest"
+	return res.get("guest_name") or "Guest"
+
+
 def notify_booking_confirmed(reservation: str) -> dict:
 	"""Booking confirmation template + the self check-in link.
 
 	Template args (design your Meta template around them):
 	    {{1}} guest name  {{2}} property  {{3}} check-in  {{4}} check-out
+	({{1}} is "Guest" on an unpaid website booking - see greeting_name.)
 	"""
 	res = frappe.get_doc("Reservation", reservation)
 	conn = _conn(res.property)
@@ -168,9 +183,10 @@ def notify_booking_confirmed(reservation: str) -> dict:
 	if not template:
 		return {"sent": False, "reason": "no_template_configured"}
 	prop_name = frappe.db.get_value("Property", res.property, "property_name")
+	name = greeting_name(res)
 	out = send_template(
 		res.property, phone, template,
-		[res.guest_name or "Guest", prop_name or res.property,
+		[name, prop_name or res.property,
 		 str(res.check_in_date), str(res.check_out_date)],
 		guest=res.guest, reservation=res.name)
 	# follow with the self check-in link when that template exists too
@@ -178,7 +194,7 @@ def notify_booking_confirmed(reservation: str) -> dict:
 	if out.get("sent") and tpl_pre and res.get("precheckin_token"):
 		link = f"{frappe.utils.get_url()}/hotel/checkin/{res.precheckin_token}"
 		send_template(res.property, phone, tpl_pre,
-		              [res.guest_name or "Guest", link],
+		              [name, link],
 		              guest=res.guest, reservation=res.name)
 	return out
 
