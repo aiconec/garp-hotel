@@ -8,7 +8,7 @@ import json
 from functools import wraps
 
 import frappe
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import get_datetime, now_datetime
 
 ADMIN = ("System Manager", "Administrator", "Hotel Admin")
 
@@ -304,10 +304,57 @@ def require_roles(*roles, scope: dict | None = None):
 	return deco
 
 
+# A wrong PIN throws, and Frappe rolls the request back on a throw - which
+# took a count saved on the Cashier PIN with it, so the lockout never engaged.
+# The count and the lock live in the cache instead; locked_until on the
+# document is still honoured.
+_PIN_FAILS = "kamra_cashier_pin_fails:{}"
+_PIN_LOCK = "kamra_cashier_pin_locked:{}"
+PIN_FAILS_KEPT_HOURS = 24  # wrong tries count "in a row" over this long
+
+
 def _pin_locked(doc) -> bool:
+	if frappe.cache.get_value(_PIN_LOCK.format(doc.name), expires=True):
+		return True
 	if not doc.get("locked_until"):
 		return False
-	return now_datetime() < doc.locked_until
+	return now_datetime() < get_datetime(doc.locked_until)
+
+
+def clear_pin_lock(user: str) -> None:
+	"""Forget a user's wrong PIN tries and lock (an admin reset)."""
+	frappe.cache.delete_value([_PIN_FAILS.format(user), _PIN_LOCK.format(user)])
+
+
+def check_cashier_pin(doc, pin) -> bool:
+	"""Is `pin` the PIN on this Cashier PIN? Every PIN check goes through
+	here - money actions and changing the PIN alike - so they share one
+	count: PIN_MAX_ATTEMPTS wrong in a row lock the PIN for PIN_LOCK_MINUTES,
+	and a locked PIN refuses even the right one. The right one clears the
+	count."""
+	from frappe.utils.password import get_decrypted_password
+
+	if _pin_locked(doc):
+		frappe.throw("PIN_LOCKED: too many wrong attempts - try again later.")
+	stored = get_decrypted_password("Cashier PIN", doc.name, "pin",
+	                                raise_exception=False)
+	if stored and str(pin or "").strip() == str(stored):
+		frappe.cache.delete_value(_PIN_FAILS.format(doc.name))
+		if doc.pin_attempts or doc.locked_until:
+			doc.pin_attempts = 0
+			doc.locked_until = None
+			doc.save(ignore_permissions=True)
+		return True
+	key = _PIN_FAILS.format(doc.name)
+	fails = frappe.cache.incrby(frappe.cache.make_key(key), 1)
+	frappe.cache.expire_key(key, PIN_FAILS_KEPT_HOURS * 3600)
+	if fails >= PIN_MAX_ATTEMPTS:
+		frappe.cache.delete_value(key)
+		frappe.cache.set_value(_PIN_LOCK.format(doc.name), 1,
+		                       expires_in_sec=PIN_LOCK_MINUTES * 60)
+		frappe.throw("PIN_LOCKED: too many wrong attempts - locked for "
+		             f"{PIN_LOCK_MINUTES} minutes.")
+	return False
 
 
 def require_cashier_pin(property: str, pin=None):
@@ -351,26 +398,8 @@ def require_cashier_pin(property: str, pin=None):
 		frappe.throw("PIN_LOCKED: too many wrong attempts - try again later.")
 	if not pin:
 		frappe.throw("PIN_REQUIRED: this action needs your cashier PIN.")
-	from frappe.utils.password import get_decrypted_password
-	stored = get_decrypted_password("Cashier PIN", user, "pin",
-	                                raise_exception=False)
-	if not stored or str(pin).strip() != str(stored):
-		attempts = int(doc.pin_attempts or 0) + 1
-		doc.pin_attempts = attempts
-		if attempts >= PIN_MAX_ATTEMPTS:
-			doc.locked_until = add_to_date(now_datetime(),
-			                               minutes=PIN_LOCK_MINUTES)
-			doc.pin_attempts = 0
-			doc.save(ignore_permissions=True)
-			frappe.throw("PIN_LOCKED: too many wrong attempts - locked for "
-			             f"{PIN_LOCK_MINUTES} minutes.")
-		doc.save(ignore_permissions=True)
+	if not check_cashier_pin(doc, pin):
 		frappe.throw("Wrong cashier PIN.")
-	# success
-	if doc.pin_attempts or doc.locked_until:
-		doc.pin_attempts = 0
-		doc.locked_until = None
-		doc.save(ignore_permissions=True)
 	frappe.cache.set_value(cache_key, 1, expires_in_sec=PIN_LOCK_MINUTES * 60)
 
 

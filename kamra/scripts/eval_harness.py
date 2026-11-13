@@ -3112,6 +3112,65 @@ def t92():
 		transport.request = real
 
 
+@check("cashier PIN: wrong tries lock it on every path, changing the PIN included")
+def t93():
+	"""set_cashier_pin checked the current PIN with no attempt counter, so
+	10k requests found any PIN. And the counter on money actions was saved
+	on the Cashier PIN just before the throw, which rolls the request back:
+	the lockout never engaged in a real request. The count now lives in the
+	cache, outside the transaction."""
+	from kamra import api, authz
+
+	u = "eval.pin@kamra.local"
+	if not frappe.db.exists("User", u):
+		frappe.get_doc({
+			"doctype": "User", "email": u, "first_name": "Pin", "enabled": 1,
+			"user_type": "System User", "send_welcome_email": 0,
+			"roles": [{"role": "Front Desk"}],
+		}).insert(ignore_permissions=True)
+	keep = frappe.db.get_value("Property", P, "require_cashier_pin")
+	frappe.db.set_value("Property", P, "require_cashier_pin", 1)
+
+	def throws(fn, *args, **kwargs):
+		try:
+			fn(*args, **kwargs)
+		except frappe.ValidationError as e:
+			return str(e)
+		raise AssertionError(f"{fn.__name__} accepted {args} {kwargs}")
+
+	authz.clear_pin_lock(u)
+	frappe.set_user(u)  # nosemgrep: frappe-setuser -- controlled user context switch
+	try:
+		api.set_cashier_pin("4321")
+		# changing the PIN: wrong guesses count, the fifth locks it
+		for guess in ("0000", "1111", "2222", "3333"):
+			assert "current PIN" in throws(api.set_cashier_pin, "9999", current_pin=guess)
+		assert "PIN_LOCKED" in throws(api.set_cashier_pin, "9999", current_pin="5555")
+		# locked means locked: the right PIN changes nothing, and money
+		# actions are locked too
+		assert "PIN_LOCKED" in throws(api.set_cashier_pin, "9999", current_pin="4321")
+		assert "PIN_LOCKED" in throws(authz.require_cashier_pin, P, "4321")
+		assert authz.cashier_unlock_status(P)["locked"] is True
+
+		# an admin reset lifts it; the right PIN then works and clears the count
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+		authz.clear_pin_lock(u)
+		frappe.set_user(u)  # nosemgrep: frappe-setuser -- controlled user context switch
+		frappe.cache.delete_value(f"kamra_cashier_unlock:{u}")
+		for guess in ("0000", "1111", "2222", "3333"):
+			assert "Wrong cashier PIN" in throws(authz.require_cashier_pin, P, guess)
+		authz.require_cashier_pin(P, "4321")  # the fifth try is right: no lock
+		frappe.cache.delete_value(f"kamra_cashier_unlock:{u}")
+		assert "Wrong cashier PIN" in throws(authz.require_cashier_pin, P, "0000"), \
+			"a right PIN didn't clear the count"
+		api.set_cashier_pin("8765", current_pin="4321")
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+		authz.clear_pin_lock(u)
+		frappe.cache.delete_value(f"kamra_cashier_unlock:{u}")
+		frappe.db.set_value("Property", P, "require_cashier_pin", keep or 0)
+
+
 @check("ticket SLA: priority sets due window")
 def t12():
 	from frappe.utils import get_datetime, now_datetime, time_diff_in_seconds
@@ -4250,7 +4309,7 @@ def execute():
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
 		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87,
-		           t88, t89, t90, t91, t92):
+		           t88, t89, t90, t91, t92, t93):
 			fn()
 	finally:
 		frappe.db.commit = real_commit
