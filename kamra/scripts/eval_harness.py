@@ -1904,6 +1904,92 @@ def t43():
 	# the harness rolls the DB back but save_file wrote real bytes to disk;
 	# clean up after ourselves rather than leaving them for the runner
 	id_documents.discard_id_document(res.name)
+@check("ID document: only the roles that check IDs open a scan, on every path Frappe serves it")
+def t88():
+	"""Housekeeping, Finance and Revenue Manager read bookings; Frappe lets
+	whoever reads a booking download what is attached to it. The scan is for
+	the roles that check IDs, and the rule holds for scans already stored."""
+	from frappe.core.doctype.file import file as file_module
+
+	from kamra import api, id_documents
+	g = _guest("ID Path Guest", "+91 70000 08801")
+	res = _res(g, "2035-05-01", "2035-05-03", ROOM)
+	frappe.set_user("frontdesk@kamra.local")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
+	try:
+		api.upload_id_document(res.name, _id_photo())
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+	scan = frappe.get_doc("File", _id_files(res.name)[0])
+	assert id_documents.is_id_scan(scan), scan.file_name
+	# an occupant's scan and a profile's address proof are scans too; an
+	# ordinary attachment on the booking is not
+	assert id_documents.is_id_scan({"attached_to_doctype": "Reservation",
+	                                 "file_name": f"occupant-id-{res.name}-1.jpg"})
+	assert id_documents.is_id_scan({"attached_to_doctype": "Guest",
+	                                 "attached_to_field": "address_proof_file",
+	                                 "file_name": "IMG_0001.jpg"})
+	note = frappe.get_doc({
+		"doctype": "File", "file_name": "eval-booking-note.txt",
+		"attached_to_doctype": "Reservation", "attached_to_name": res.name,
+		"is_private": 1, "content": b"late arrival",
+	}).insert(ignore_permissions=True)
+	assert not id_documents.is_id_scan(note)
+
+	# someone in a role that reads bookings but doesn't check IDs
+	readers = set(frappe.get_all(
+		"Custom DocPerm", filters={"parent": "Reservation", "permlevel": 0, "read": 1},
+		pluck="role")) or set(frappe.get_all(
+		"DocPerm", filters={"parent": "Reservation", "permlevel": 0, "read": 1},
+		pluck="role"))
+	role = next((r for r in ("Housekeeping", "Finance", "Revenue Manager",
+	                         "Housekeeping Supervisor") if r in readers), "Housekeeping")
+	u = "eval.idpeek@kamra.local"
+	if not frappe.db.exists("User", u):
+		frappe.get_doc({
+			"doctype": "User", "email": u, "first_name": "Peek", "enabled": 1,
+			"user_type": "System User", "send_welcome_email": 0,
+			"roles": [{"role": role}],
+		}).insert(ignore_permissions=True)
+	reads_booking = frappe.has_permission("Reservation", "read", doc=res, user=u)
+	if role in readers:
+		assert reads_booking, f"{role} should still read the booking itself"
+
+	# the download route (/private/files/, download_file, zip_files) and the
+	# REST route both refuse the scan...
+	assert not file_module.has_permission(scan, "read", user=u), "scan downloadable"
+	assert not frappe.has_permission("File", "read", doc=scan, user=u), "scan readable over REST"
+	# ...while the booking's other attachments behave as they always did
+	assert bool(file_module.has_permission(note, "read", user=u)) == bool(reads_booking)
+	# the desk who captured it still opens it, and so does an admin
+	assert file_module.has_permission(scan, "read", user="frontdesk@kamra.local")
+	assert frappe.has_permission("File", "read", doc=scan, user="frontdesk@kamra.local")
+	assert frappe.has_permission("File", "read", doc=scan, user="Administrator")
+
+	# lists and the form's attachment sidebar leave it out
+	frappe.set_user(u)  # nosemgrep: frappe-setuser -- controlled user context switch
+	try:
+		listed = set(frappe.get_list("File", filters={
+			"attached_to_doctype": "Reservation", "attached_to_name": res.name},
+			pluck="name"))
+		assert scan.name not in listed, "File list shows the scan"
+		if reads_booking:
+			assert note.name in listed, "File list lost an ordinary attachment"
+			frappe.local.response = frappe._dict({"docs": []})
+			id_documents.getdoc("Reservation", res.name)
+			shown = {a.name for a in frappe.response.docinfo.attachments}
+			assert scan.name not in shown, "form sidebar shows the scan"
+			assert note.name in shown, "form sidebar lost an ordinary attachment"
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+	frappe.local.response = frappe._dict({"docs": []})
+	id_documents.getdoc("Reservation", res.name)
+	assert scan.name in {a.name for a in frappe.response.docinfo.attachments}, \
+		"an admin no longer sees the scan in the sidebar"
+
+	id_documents.discard_id_document(res.name)
+	frappe.delete_doc("File", note.name, ignore_permissions=True, delete_permanently=True)
+
+
 @check("pre-checkin: ID photo stored privately, discarded at checkout per policy")
 def t34():
 	import base64
@@ -3868,7 +3954,8 @@ def execute():
 		           t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t47b, t47c, t47d, t48, t49, t50, t51, t53,
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
-		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87):
+		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87,
+		           t88):
 			fn()
 	finally:
 		frappe.db.commit = real_commit
