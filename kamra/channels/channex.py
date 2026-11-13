@@ -17,19 +17,22 @@ DEFAULT_ENDPOINT = "https://app.channex.io/api/v1"
 
 
 def _call(conn, method: str, path: str, payload=None):
-	import requests
+	"""(ok, body): the parsed reply when ok, else {"status": <HTTP status>}
+	- a refused reply's body is never passed on."""
+	from kamra.channels import transport
 
 	key = conn.get_password("api_key", raise_exception=False)
 	base = (conn.endpoint or DEFAULT_ENDPOINT).rstrip("/")
-	res = requests.request(
-		method, f"{base}/{path}",
-		json=payload, headers={"user-api-key": key or ""}, timeout=20)
-	ok = 200 <= res.status_code < 300
+	res = transport.request(
+		"Channex", method, f"{base}/{path}",
+		json_body=payload, headers={"user-api-key": key or ""}, timeout=20)
+	if not res.ok:
+		return False, {"status": res.status_code}
 	try:
 		body = res.json()
 	except Exception:
-		body = {"raw": res.text[:300]}
-	return ok, body
+		body = {}
+	return True, body
 
 
 def push_ari(conn, snapshot) -> tuple[bool, str]:
@@ -50,14 +53,19 @@ def push_ari(conn, snapshot) -> tuple[bool, str]:
 					"date": day["date"],
 					"rate": str(day["rate"]),
 				})
-	ok1, b1 = _call(conn, "POST", "availability",
-	                {"values": availability})
-	ok2, b2 = (True, {}) if not rates else _call(
-		conn, "POST", "restrictions", {"values": rates})
+	from kamra.channels.transport import ChannelHTTPError
+
+	try:
+		ok1, b1 = _call(conn, "POST", "availability",
+		                {"values": availability})
+		ok2, b2 = (True, {}) if not rates else _call(
+			conn, "POST", "restrictions", {"values": rates})
+	except ChannelHTTPError as exc:
+		return False, str(exc)
 	if ok1 and ok2:
 		return True, f"{len(availability)} availability, {len(rates)} rate values"
 	err = (b1 if not ok1 else b2)
-	return False, str(err)[:280]
+	return False, f"HTTP {err.get('status')}"
 
 
 def parse_webhook(conn, payload) -> list[dict]:

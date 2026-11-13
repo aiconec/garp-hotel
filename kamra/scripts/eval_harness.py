@@ -3042,6 +3042,76 @@ def t53():
 		channex._call = real_call
 
 
+@check("channel manager: endpoints stay on the provider's hosts, replies are never echoed")
+def t92():
+	"""A Revenue Manager or trial owner could point a connection at an
+	inner address; the hourly push POSTed there from inside the container
+	and put 200 characters of the reply in last_push_status."""
+	from kamra.channels import aiosell, channex, staah, transport
+
+	def refused(fn):
+		try:
+			fn()
+		except frappe.ValidationError:
+			return True
+		return False
+
+	def conn_with(provider, endpoint):
+		return frappe.get_doc({
+			"doctype": "Channel Manager Connection", "property": P,
+			"provider": provider, "active": 0, "endpoint": endpoint,
+		})
+
+	# saving: https on 443, on the provider's own hosts (no DNS needed for these)
+	for provider, endpoint in (
+			("STAAH", "http://10.0.0.5:8080/PMSService"),
+			("STAAH", "https://sua.staah.net:8443/PMSService"),
+			("STAAH", "https://user:pw@sua.staah.net/PMSService"),
+			("STAAH", "https://evil.example.com/PMSService"),
+			("Channex", "https://channex.io.evil.example.com/api/v1"),
+			("AioSell", "https://127.0.0.1/api/v2/cm")):
+		doc = conn_with(provider, endpoint)
+		assert refused(lambda: doc.insert(ignore_permissions=True)), (provider, endpoint)
+	# a name that resolves inside is refused whatever the provider
+	assert refused(lambda: transport.public_addresses("127.0.0.1"))
+	assert refused(lambda: transport.public_addresses("169.254.169.254"))
+
+	# a connection saved before the rule fails its push instead of reaching in
+	old = conn_with("STAAH", None).insert(ignore_permissions=True)
+	frappe.db.set_value("Channel Manager Connection", old.name, "endpoint",
+	                    "http://10.0.0.5:9500/probe")
+	old.reload()
+	ok, detail = staah.push_ari(old, [])
+	assert not ok and "10.0.0.5" not in detail, detail
+
+	# a refused reply is reported by its status only, whatever it said
+	real = transport.request
+	transport.request = lambda *a, **k: transport.Reply(500, b"internal secret page")
+	try:
+		# set past the save check: the request itself is stubbed, no DNS
+		frappe.db.set_value("Channel Manager Connection", old.name, "endpoint",
+		                    "https://sua.staah.net/PMSService")
+		old.reload()
+		ok, detail = staah.push_ari(old, [])
+		assert (ok, detail) == (False, "HTTP 500"), detail
+		ok, detail = channex.push_ari(old, [])
+		assert (ok, detail) == (False, "HTTP 500"), detail
+
+		class Live:
+			endpoint = None
+			api_username, pms_slug, external_property_id = "u", "pms", "hotel"
+
+			def get_password(self, *a, **k):
+				return "pw"
+
+		ok, detail = aiosell.push_ari(Live(), [{
+			"external_room_id": "r", "external_rate_id": None,
+			"days": [{"date": "2031-01-01", "available": 1, "rate": 1}]}])
+		assert not ok and "secret" not in detail and "HTTP 500" in detail, detail
+	finally:
+		transport.request = real
+
+
 @check("ticket SLA: priority sets due window")
 def t12():
 	from frappe.utils import get_datetime, now_datetime, time_diff_in_seconds
@@ -4180,7 +4250,7 @@ def execute():
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
 		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87,
-		           t88, t89, t90, t91):
+		           t88, t89, t90, t91, t92):
 			fn()
 	finally:
 		frappe.db.commit = real_commit

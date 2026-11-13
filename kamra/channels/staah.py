@@ -20,7 +20,7 @@ def push_ari(conn, snapshot) -> tuple[bool, str]:
 		return False, ("STAAH partner credentials pending - join their "
 		               "connectivity partner program, then set the API key "
 		               "and endpoint on this connection.")
-	import requests
+	from kamra.channels import transport
 
 	# SU API: one XML document per room/rate with date-range updates
 	key = conn.get_password("api_key", raise_exception=False)
@@ -36,15 +36,16 @@ def push_ari(conn, snapshot) -> tuple[bool, str]:
 	xml = ("<?xml version=\"1.0\"?><AvailRateUpdateRQ>"
 	       + "".join(parts) + "</AvailRateUpdateRQ>")
 	try:
-		res = requests.post(
-			conn.endpoint or DEFAULT_ENDPOINT, data=xml,
+		res = transport.request(
+			"STAAH", "POST", conn.endpoint or DEFAULT_ENDPOINT, data=xml,
 			headers={"Content-Type": "application/xml",
 			         "Authorization": f"Bearer {key or ''}"}, timeout=25)
-		if 200 <= res.status_code < 300:
-			return True, f"{len(parts)} day-values"
-		return False, f"HTTP {res.status_code}: {res.text[:200]}"
-	except Exception as exc:
-		return False, str(exc)[:280]
+	except transport.ChannelHTTPError as exc:
+		return False, str(exc)
+	if res.ok:
+		return True, f"{len(parts)} day-values"
+	# the status only: the reply's body is never shown back
+	return False, f"HTTP {res.status_code}"
 
 
 def parse_webhook(conn, payload) -> list[dict]:
