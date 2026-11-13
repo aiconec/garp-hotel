@@ -2124,6 +2124,97 @@ def t90():
 				conf[k] = v
 
 
+@check("folio: each night bills the price the booking was sold at - OTA, negotiated, rate plan")
+def t91():
+	"""The night audit and checkout used to post occupancy + season for
+	every booking: an OTA's price, a negotiated amount, a rate plan and a
+	quoted demand premium never reached the bill. (Rack here is 4000 a
+	night for two adults, 5% tax - see t1.)"""
+	import json
+
+	from kamra.folio import post_remaining_nights
+
+	keep = frappe.db.get_value("Property", P, [
+		"cleaning_fee", "room_levy_percent", "rates_include_tax"], as_dict=True)
+
+	def house(**values):
+		frappe.db.set_value("Property", P, values)
+		frappe.clear_document_cache("Property", P)
+
+	def stay(name, phone, ci, co, **kw):
+		g = _guest(name, phone)
+		return frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g,
+			"room_type": RT, "check_in_date": ci, "check_out_date": co,
+			"adults": 2, **kw,
+		}).insert(ignore_permissions=True)
+
+	def billed(res):
+		post_remaining_nights(res)
+		folio = frappe.get_doc("Folio", frappe.db.get_value(
+			"Folio", {"reservation": res.name, "folio_type": "Guest"}))
+		rooms = sorted((str(c.posting_date), round(float(c.rate), 2), float(c.gst_rate))
+		               for c in folio.charges if c.charge_type == "Room")
+		return [r for _, r, _ in rooms], [g for *_, g in rooms], folio
+
+	house(cleaning_fee=0, room_levy_percent=0, rates_include_tax=0)
+	try:
+		# an OTA sold two nights for 9450 all-in: 4500 + 5% a night, not 4000
+		ota = stay("V7 OTA", "+91 70000 09201", "2031-03-01", "2031-03-03",
+		           source="OTA", channel="Booking.com", ota_ref="EVAL-V7-1",
+		           auto_price=0, amount_after_tax=9450)
+		rates, taxes, _ = billed(ota)
+		assert rates == [4500.0, 4500.0], rates
+		assert taxes == [5.0, 5.0], taxes
+
+		# a negotiated stay: the desk held 3500 a night before tax
+		neg = stay("V7 Negotiated", "+91 70000 09202", "2031-03-05", "2031-03-07",
+		           auto_price=0, amount_before_tax=7000, tax_amount=350,
+		           amount_after_tax=7350)
+		rates, _, _ = billed(neg)
+		assert rates == [3500.0, 3500.0], rates
+
+		# a corporate rate plan 20% off: 3200 a night, as quoted
+		plan = frappe.get_doc({
+			"doctype": "Rate Plan", "property": P, "rate_plan_name": "EVAL Corporate",
+			"code": "EVCORP", "modifier_type": "Percent", "modifier_value": -20,
+		}).insert(ignore_permissions=True).name
+		corp = stay("V7 Rate Plan", "+91 70000 09203", "2031-03-09", "2031-03-11",
+		            auto_price=1, rate_plan=plan)
+		assert float(corp.amount_before_tax) == 6400, corp.amount_before_tax
+		rates, _, _ = billed(corp)
+		assert rates == [3200.0, 3200.0], rates
+
+		# an engine-priced stay bills its quote's nights (a demand premium
+		# quoted at booking stays billed after the house empties)
+		auto = stay("V7 Quoted", "+91 70000 09204", "2031-03-13", "2031-03-14",
+		            auto_price=1)
+		snap = json.loads(auto.quote_snapshot)
+		snap["nightly"][0]["rate"], snap["room_total"] = 4800, 4800
+		frappe.db.set_value("Reservation", auto.name, "quote_snapshot", json.dumps(snap))
+		auto.reload()
+		rates, _, _ = billed(auto)
+		assert rates == [4800.0], rates
+
+		# a stored total is the whole stay: the cleaning fee and the levy
+		# come out of it, not on top
+		house(cleaning_fee=500, room_levy_percent=10)
+		ota2 = stay("V7 OTA Fees", "+91 70000 09205", "2031-03-16", "2031-03-18",
+		            source="OTA", channel="Agoda", ota_ref="EVAL-V7-2",
+		            auto_price=0, amount_after_tax=9450)
+		_, _, folio = billed(ota2)
+		assert abs(float(folio.charges_total) - 9000) < 0.05, folio.charges_total
+		house(cleaning_fee=0, room_levy_percent=0)
+
+		# no stored price at all: today's rate, as before
+		bare = stay("V7 Bare", "+91 70000 09206", "2031-03-20", "2031-03-21",
+		            auto_price=0)
+		rates, _, _ = billed(bare)
+		assert rates == [4000.0], rates
+	finally:
+		house(**{k: v or 0 for k, v in keep.items()})
+
+
 @check("pre-checkin: ID photo stored privately, discarded at checkout per policy")
 def t34():
 	import base64
@@ -4089,7 +4180,7 @@ def execute():
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
 		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87,
-		           t88, t89, t90):
+		           t88, t89, t90, t91):
 			fn()
 	finally:
 		frappe.db.commit = real_commit

@@ -70,23 +70,34 @@ def open_folio(reservation) -> str:
 	return folio.name
 
 
-def _post_cleaning_fee(reservation, folio_name: str):
-	"""Post one-time cleaning fee from quote snapshot / property (ADR-008)."""
+def _quote_snapshot(reservation) -> dict:
+	"""The booking's stored quote (ADR-008), or {} when it has none or it
+	can't be read."""
 	import json
+	snap = getattr(reservation, "quote_snapshot", None)
+	if not snap:
+		return {}
+	try:
+		data = json.loads(snap) if isinstance(snap, str) else snap
+	except Exception:
+		return {}
+	return data if isinstance(data, dict) else {}
+
+
+def _cleaning_fee(reservation) -> tuple[float, float]:
+	"""The one-time cleaning fee the folio posts for this stay, and its tax
+	rate: from the quote snapshot, else the property's current fee."""
 	amount = 0.0
 	tax_rate = 0.0
-	snap = getattr(reservation, "quote_snapshot", None)
-	if snap:
-		try:
-			data = json.loads(snap) if isinstance(snap, str) else snap
-			for li in data.get("line_items") or []:
-				if li.get("component") == "cleaning_fee":
-					amount = float(li.get("amount") or 0)
-					tax = float(li.get("tax_amount") or 0)
-					tax_rate = (tax / amount * 100) if amount else 0
-					break
-		except Exception:
-			pass  # snapshot unreadable; fall back to the property's current cleaning fee
+	try:
+		for li in _quote_snapshot(reservation).get("line_items") or []:
+			if li.get("component") == "cleaning_fee":
+				amount = float(li.get("amount") or 0)
+				tax = float(li.get("tax_amount") or 0)
+				tax_rate = (tax / amount * 100) if amount else 0
+				break
+	except Exception:
+		pass  # snapshot unreadable; fall back to the property's current cleaning fee
 	if amount <= 0:
 		amount = float(
 			frappe.db.get_value(
@@ -94,6 +105,12 @@ def _post_cleaning_fee(reservation, folio_name: str):
 			)
 			or 0
 		)
+	return amount, tax_rate
+
+
+def _post_cleaning_fee(reservation, folio_name: str):
+	"""Post one-time cleaning fee from quote snapshot / property (ADR-008)."""
+	amount, tax_rate = _cleaning_fee(reservation)
 	if amount <= 0:
 		return
 	if frappe.db.exists(
@@ -254,11 +271,88 @@ def _room_gst(reservation) -> float:
 	return float(room_gst_rate(reservation.property, rt, rate))
 
 
+def _meal_amount(reservation, mp) -> float:
+	"""One night of the stay's meal plan, as the folio posts it."""
+	return (
+		(reservation.adults or 1) * float(mp.price_per_adult or 0)
+		+ max(0, reservation.children or 0) * float(mp.price_per_child or 0)
+	)
+
+
+def _booked_nights(reservation) -> dict | None:
+	"""{date: (taxable room rate, tax rate)} for each night at the price the
+	booking was sold at, or None when it carries no price of its own (the
+	night is then priced from today's rates, as it always was).
+
+	- Priced by the engine (auto_price on): the quote's own nights - season,
+	  demand premium and party as quoted - scaled to the quote's room total,
+	  which is where a rate plan's modifier lands. Meal plan, cleaning fee,
+	  levy and voucher keep their own folio lines, as the quote had them.
+	- A price of its own (auto_price off - an OTA's total, an imported or a
+	  negotiated amount): that price is the whole stay. Pre-tax, it is
+	  amount_before_tax when that agrees with amount_after_tax, else
+	  amount_after_tax with the room tax backed out (an OTA sends only the
+	  total). The folio's other lines for the stay - meal plan, cleaning fee,
+	  room levy, and the voucher it takes off at opening - are carved out of
+	  it, and the rest is spread evenly over the nights, so the folio adds
+	  back up to the price the booking carries.
+	"""
+	from frappe.utils import cint, date_diff, flt
+
+	from kamra.pricing import room_gst_rate
+
+	if cint(reservation.get("auto_price")):
+		nightly = [n for n in _quote_snapshot(reservation).get("nightly") or []
+		           if isinstance(n, dict) and n.get("date")]
+		if not nightly:
+			return None
+		quoted = sum(flt(n.get("rate")) for n in nightly)
+		room_total = flt(_quote_snapshot(reservation).get("room_total", quoted))
+		scale = room_total / quoted if quoted else 1.0
+		return {str(n["date"]): (flt(n.get("rate")) * scale, flt(n.get("gst_rate")))
+		        for n in nightly}
+
+	before = flt(reservation.get("amount_before_tax"))
+	tax = flt(reservation.get("tax_amount"))
+	after = flt(reservation.get("amount_after_tax"))
+	nights = max(date_diff(reservation.check_out_date, reservation.check_in_date), 1)
+	rt = frappe.get_cached_doc("Room Type", reservation.room_type)
+	if before > 0 and (after <= 0 or abs(before + tax - after) <= 1):
+		pre_tax = before
+	elif after > 0:
+		gst = room_gst_rate(reservation.property, rt, Decimal(str(after / nights)))
+		pre_tax = after / (1 + float(gst) / 100)
+	else:
+		return None
+
+	meal = 0.0
+	if reservation.get("meal_plan"):
+		meal = _meal_amount(reservation, frappe.get_cached_doc("Meal Plan", reservation.meal_plan))
+	cleaning = _cleaning_fee(reservation)[0]
+	levy_pct = flt(frappe.get_cached_doc("Property", reservation.property).get("room_levy_percent"))
+	room = (pre_tax - nights * meal - cleaning + flt(reservation.get("discount_amount"))) \
+		/ (nights * (1 + levy_pct / 100))
+	room = max(room, 0.0)
+	gst = float(room_gst_rate(reservation.property, rt, Decimal(str(room))))
+	start = getdate(reservation.check_in_date)
+	return {str(add_days(start, i)): (room, gst) for i in range(nights)}
+
+
+def _booked_night(reservation, date):
+	"""(taxable room rate, tax rate) for this night at the booking's own
+	price, or None (see _booked_nights)."""
+	return (_booked_nights(reservation) or {}).get(str(getdate(date)))
+
+
 def _nightly_room_rate(reservation, date) -> float:
-	"""Taxable nightly rate: seasons applied, tax backed out when the
-	property configures tax-inclusive pricing."""
+	"""Taxable nightly rate: the price the booking was sold at; for a
+	booking that carries none, today's rate - seasons applied, tax backed
+	out when the property configures tax-inclusive pricing."""
 	from kamra.pricing import occupancy_rate, rates_include_tax, room_gst_rate, season_adjust
 
+	booked = _booked_night(reservation, date)
+	if booked:
+		return float(booked[0])
 	rt = frappe.get_doc("Room Type", reservation.room_type)
 	base = occupancy_rate(rt, reservation.adults, reservation.children, date)
 	rate = season_adjust(reservation.property, date, base,
@@ -272,6 +366,9 @@ def _nightly_room_rate(reservation, date) -> float:
 def _nightly_gst(reservation, date) -> float:
 	from kamra.pricing import occupancy_rate, room_gst_rate, season_adjust
 
+	booked = _booked_night(reservation, date)
+	if booked:
+		return float(booked[1])
 	rt = frappe.get_doc("Room Type", reservation.room_type)
 	base = occupancy_rate(rt, reservation.adults, reservation.children, date)
 	gross = season_adjust(reservation.property, date, base,
@@ -320,10 +417,7 @@ def post_room_night(reservation, date, folios=None) -> bool:
 	if reservation.meal_plan and not _charge_posted(
 			reservation.name, "Meal Plan", date):
 		mp = frappe.get_doc("Meal Plan", reservation.meal_plan)
-		meal_amount = (
-			(reservation.adults or 1) * float(mp.price_per_adult or 0)
-			+ max(0, reservation.children or 0) * float(mp.price_per_child or 0)
-		)
+		meal_amount = _meal_amount(reservation, mp)
 		if meal_amount:
 			_append_charge(folios, reservation, "Meal Plan", {
 				"posting_date": date,
