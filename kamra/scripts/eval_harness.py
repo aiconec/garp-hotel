@@ -2057,6 +2057,73 @@ def t89():
 	assert occupancy_rate(rt, 2, -6) == occupancy_rate(rt, 2, 0)
 
 
+@check("public booking: email-confirmed pay-at-hotel bookings are rationed per night and per inbox")
+def t90():
+	"""An emailed code confirms a pay-at-hotel website booking, which then
+	holds its room until arrival: one IP and one Gmail inbox (a dotted
+	spelling per booking) could sell a hotel out for a month."""
+	from kamra import public_api as pub
+
+	keys = pub._contact_keys
+	assert keys(None, "h.o.t.e.l.hold+7@gmail.com") == keys(None, "hotelhold@googlemail.com") \
+		== {"e:hotelhold@gmail.com"}, keys(None, "h.o.t.e.l.hold+7@gmail.com")
+	# other providers' dots are part of the address
+	assert keys(None, "h.otel@example.com") != keys(None, "hotel@example.com")
+
+	def refused(fn):
+		try:
+			fn()
+		except (frappe.ValidationError, frappe.PermissionError):
+			return True
+		return False
+
+	def website(name, phone, email, ci, co):
+		g = _guest(name, phone)
+		frappe.db.set_value("Guest", g, "email", email)
+		return frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g, "room_type": RT,
+			"check_in_date": ci, "check_out_date": co, "adults": 2,
+			"auto_price": 1, "source": "Website", "status": "Confirmed",
+		}).insert(ignore_permissions=True).name
+
+	conf = frappe.local.conf
+	knobs = ("hotel_public_max_unguaranteed", "hotel_public_max_unconfirmed")
+	saved = {k: conf.get(k) for k in knobs}
+	conf["hotel_public_max_unguaranteed"] = 2
+	conf["hotel_public_max_unconfirmed"] = 100  # earlier checks leave holds at P
+	try:
+		ci = add_days(nowdate(), 120)
+		co = add_days(ci, 3)
+		made = [website(f"Unpaid Web {i}", f"+91 70000 0900{i}",
+		                f"unpaid{i}@example.com", ci, co) for i in range(2)]
+		inside = (str(add_days(ci, 1)), str(add_days(ci, 2)))
+		assert refused(lambda: pub._assert_booking_quota(
+			P, "+91 70000 09100", "third@example.com", *inside)), \
+			"a night already half held by unpaid website bookings sold again"
+		# other nights are untouched
+		pub._assert_booking_quota(P, "+91 70000 09101", "fourth@example.com",
+		                          str(co), str(add_days(co, 2)))
+		# an advance paid makes a booking guaranteed: it stops counting
+		frappe.db.set_value("Reservation", made[0], "advance_paid", 1000)
+		pub._assert_booking_quota(P, "+91 70000 09102", "fifth@example.com", *inside)
+
+		# one inbox holds at most a month of room-nights a day
+		far = add_days(nowdate(), 300)
+		website("Long Web", "+91 70000 09103", "room.nights@gmail.com",
+		        add_days(nowdate(), 200), add_days(nowdate(), 225))  # 25 nights
+		assert refused(lambda: pub._assert_booking_quota(
+			P, "+91 70000 09104", "r.oom.nights+2@gmail.com",
+			str(far), str(add_days(far, 6)))), "the same inbox took 31 nights in a day"
+		pub._assert_booking_quota(P, "+91 70000 09105", "r.oom.nights+3@gmail.com",
+		                          str(far), str(add_days(far, 5)))
+	finally:
+		for k, v in saved.items():
+			if v is None:
+				conf.pop(k, None)
+			else:
+				conf[k] = v
+
+
 @check("pre-checkin: ID photo stored privately, discarded at checkout per policy")
 def t34():
 	import base64
@@ -4022,7 +4089,7 @@ def execute():
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
 		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87,
-		           t88, t89):
+		           t88, t89, t90):
 			fn()
 	finally:
 		frappe.db.commit = real_commit
