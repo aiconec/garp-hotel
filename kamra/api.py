@@ -3984,6 +3984,18 @@ def _find_or_create_guest(guest_name: str, phone: str | None,
 	return guest.name
 
 
+def assert_party(adults, children) -> tuple[int, int]:
+	"""A booking's party, as ints: at least one adult, and no negative
+	number of children (per-head child and meal prices would turn a negative
+	party into a discount, or a credit)."""
+	adults, children = cint(adults), cint(children)
+	if adults < 1:
+		frappe.throw(_("A stay needs at least one adult."))
+	if children < 0:
+		frappe.throw(_("The number of children can't be negative."))
+	return adults, children
+
+
 @frappe.whitelist()
 @require_roles("Front Desk", "Hotel Agent")
 def create_booking(property: str, room_type: str, check_in_date: str,
@@ -4024,6 +4036,7 @@ def create_booking(property: str, room_type: str, check_in_date: str,
 	from kamra.crs import assert_property_access
 	from kamra.reservation_state import find_by_idempotency, lock_sius_for_booking
 	assert_property_access(property)
+	adults, children = assert_party(adults, children)
 
 	key = (idempotency_key or "").strip() or None
 	if key:

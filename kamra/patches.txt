@@ -24,3 +24,4 @@ kamra.patches.v37.move_corporate_clients_off_company
 kamra.patches.v38.keep_existing_messages
 kamra.patches.v39.rename_site_config_keys
 kamra.patches.bizconnect.desk_is_home
+kamra.patches.bizconnect.clear_negative_party_counts

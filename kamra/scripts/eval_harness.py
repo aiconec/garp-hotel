@@ -1990,6 +1990,73 @@ def t88():
 	frappe.delete_doc("File", note.name, ignore_permissions=True, delete_permanently=True)
 
 
+@check("party: no negative children or adult-less stays, on any booking path")
+def t89():
+	"""children=-6 on the public page billed each night below the booked
+	price (child rate and meal plan are per head)."""
+	from kamra import api, public_api
+
+	def refused(fn):
+		try:
+			fn()
+		except (frappe.ValidationError, frappe.PermissionError):
+			return True
+		return False
+
+	ci, co = add_days(nowdate(), 44), add_days(nowdate(), 46)
+	other = "EVAL Party Hotel"
+	if not frappe.db.exists("Property", other):
+		frappe.get_doc({
+			"doctype": "Property", "property_name": other, "country": "India",
+			"currency": "INR", "city": "Elsewhere", "gst_mode": "Slab",
+			"gst_slab_threshold": 7500, "gst_rate_low": 5, "gst_rate_high": 18,
+		}).insert(ignore_permissions=True)
+	foreign_plan = frappe.get_doc({
+		"doctype": "Meal Plan", "property": other, "code": "AP",
+		"price_per_adult": 1, "price_per_child": -5000,
+	}).insert(ignore_permissions=True).name
+
+	frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- controlled user context switch
+	try:
+		for adults, children in ((2, -6), (0, 0), (-1, 2)):
+			assert refused(lambda: public_api.book(
+				property=P, room_type=RT, check_in_date=ci, check_out_date=co,
+				guest_name="Party Web", phone="+919812300891",
+				email="party.web@example.com", adults=adults, children=children)), \
+				f"public booking took adults={adults} children={children}"
+		# another hotel's meal plan is not for sale here
+		assert refused(lambda: public_api.book(
+			property=P, room_type=RT, check_in_date=ci, check_out_date=co,
+			guest_name="Party Web", phone="+919812300892",
+			email="party.plan@example.com", meal_plan=foreign_plan))
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+
+	assert refused(lambda: api.create_booking(
+		property=P, room_type=RT, check_in_date=ci, check_out_date=co,
+		guest_name="Party Desk", phone="+919812300893", children=-1)), \
+		"the desk booked a negative party"
+	g = _guest("Party Doc", "+91 70000 08903")
+	for field, value in (("children", -1), ("adults", 0), ("infants", -1),
+	                     ("extra_beds", -2)):
+		doc = frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g,
+			"room_type": RT, "check_in_date": ci, "check_out_date": co,
+			"adults": 2, "auto_price": 1, field: value,
+		})
+		assert refused(lambda: doc.insert(ignore_permissions=True)), \
+			f"a Reservation saved {field}={value}"
+	# an edit can't sneak one in either
+	res = _res(g, ci, co)
+	res.children = -3
+	assert refused(lambda: res.save(ignore_permissions=True)), "an edit saved children=-3"
+
+	# a head count never lowers a price, even on a row that predates the check
+	from kamra.pricing import occupancy_rate
+	rt = frappe.get_doc("Room Type", RT)
+	assert occupancy_rate(rt, 2, -6) == occupancy_rate(rt, 2, 0)
+
+
 @check("pre-checkin: ID photo stored privately, discarded at checkout per policy")
 def t34():
 	import base64
@@ -3955,7 +4022,7 @@ def execute():
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
 		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87,
-		           t88):
+		           t88, t89):
 			fn()
 	finally:
 		frappe.db.commit = real_commit

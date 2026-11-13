@@ -179,6 +179,11 @@ class Reservation(Document):
 		if adults < 1:
 			frappe.throw(_("A stay needs at least one adult."),
 				title=_("Room capacity"))
+		# a negative party would bill each night below the price it was
+		# booked at (child rate and meal plan are per head)
+		if children < 0:
+			frappe.throw(_("The number of children can't be negative."),
+				title=_("Room capacity"))
 		cap = frappe.db.get_value(
 			"Room Type", self.room_type,
 			["adults_capacity", "children_capacity", "room_type_name"],

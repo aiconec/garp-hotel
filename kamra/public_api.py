@@ -12,6 +12,7 @@ import re
 import secrets
 
 import frappe
+from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import (
 	add_to_date, cint, date_diff, escape_html, get_datetime, now_datetime, nowdate,
@@ -824,9 +825,15 @@ def book(property: str, room_type: str, check_in_date: str,
 	email = (email or "").strip()
 	if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
 		frappe.throw("A valid email is required - we send your booking code there.")
+	from kamra.api import assert_party
+	adults, children = assert_party(adults, children)
 
 	prop = frappe.get_cached_doc("Property", property)
 	_assert_publicly_bookable(prop, check_in_date, check_out_date, room_type)
+	# only this hotel's own meal plans, at its own price
+	if meal_plan and not frappe.db.exists(
+			"Meal Plan", {"name": meal_plan, "property": property, "disabled": 0}):
+		frappe.throw(_("This meal plan can't be booked online."))
 	# a blacklisted phone is refused without saying who or why
 	if frappe.db.exists("Guest", {"phone": phone.strip(), "blacklisted": 1}):
 		frappe.throw("We can't take this booking online. Please contact the hotel.")

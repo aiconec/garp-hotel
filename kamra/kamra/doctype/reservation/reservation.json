@@ -241,13 +241,15 @@
    "default": "2",
    "fieldname": "adults",
    "fieldtype": "Int",
-   "label": "Adults"
+   "label": "Adults",
+   "non_negative": 1
   },
   {
    "default": "0",
    "fieldname": "children",
    "fieldtype": "Int",
-   "label": "Children"
+   "label": "Children",
+   "non_negative": 1
   },
   {
    "fieldname": "sb_actual",
@@ -696,12 +698,14 @@
   {
    "fieldname": "extra_beds",
    "fieldtype": "Int",
-   "label": "Extra Beds"
+   "label": "Extra Beds",
+   "non_negative": 1
   },
   {
    "fieldname": "infants",
    "fieldtype": "Int",
-   "label": "Infants"
+   "label": "Infants",
+   "non_negative": 1
   },
   {
    "fieldname": "cb_extras",
@@ -737,7 +741,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-16 16:26:57.000000",
+ "modified": "2026-11-13 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Kamra",
  "name": "Reservation",

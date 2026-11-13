@@ -322,7 +322,7 @@ def post_room_night(reservation, date, folios=None) -> bool:
 		mp = frappe.get_doc("Meal Plan", reservation.meal_plan)
 		meal_amount = (
 			(reservation.adults or 1) * float(mp.price_per_adult or 0)
-			+ (reservation.children or 0) * float(mp.price_per_child or 0)
+			+ max(0, reservation.children or 0) * float(mp.price_per_child or 0)
 		)
 		if meal_amount:
 			_append_charge(folios, reservation, "Meal Plan", {
