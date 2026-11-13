@@ -12,9 +12,11 @@ import re
 import secrets
 
 import frappe
+from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import (
-	add_to_date, cint, date_diff, escape_html, get_datetime, now_datetime, nowdate,
+	add_days, add_to_date, cint, date_diff, escape_html, get_datetime, getdate,
+	now_datetime, nowdate,
 )
 
 from kamra.booking_slugs import resolve_public_slug, slugify
@@ -33,12 +35,17 @@ VERIFY_MAX_TRIES = 5
 # Nobody has paid or been verified when an anonymous booking takes its room,
 # so those bookings are rationed. Each cap can be changed in site_config
 # (hotel_public_max_open_per_contact, hotel_public_max_bookings_per_ip_day,
-# hotel_public_max_unconfirmed_per_ip, hotel_public_max_unconfirmed).
+# hotel_public_max_unconfirmed_per_ip, hotel_public_max_unconfirmed,
+# hotel_public_max_room_nights_per_contact, hotel_public_max_unguaranteed).
 PUBLIC_MAX_OPEN_PER_CONTACT = 3      # open website bookings per phone or email
+PUBLIC_MAX_ROOM_NIGHTS_PER_CONTACT = 30  # nights booked per phone or email, 24 h
 PUBLIC_MAX_BOOKINGS_PER_IP_DAY = 10  # new website bookings per address, 24 h
 PUBLIC_MAX_UNCONFIRMED_PER_IP = 3    # unverified / unpaid holds per address
 PUBLIC_UNCONFIRMED_SHARE = 0.5       # of a property's rooms, at least 3
+PUBLIC_UNGUARANTEED_SHARE = 0.5      # of its rooms on any one night, at least 3
 UNCONFIRMED_STATUSES = ("Held", "Pending Payment")
+# mailboxes that ignore dots in the name (and googlemail.com is gmail.com)
+DOTLESS_MAIL_DOMAINS = ("gmail.com", "googlemail.com")
 
 
 def _assert_publicly_bookable(prop, check_in_date: str, check_out_date: str,
@@ -66,14 +73,18 @@ def _assert_publicly_bookable(prop, check_in_date: str, check_out_date: str,
 def _contact_keys(phone: str | None, email: str | None) -> set[str]:
 	"""A phone and an email in the form two spellings of the same contact
 	share: the last 9 digits ("+62 812-3456-7890" and "081234567890"), and
-	the mailbox without its "+tag"."""
+	the mailbox without its "+tag" - and, for Gmail, without dots, since
+	h.o.t.e.l@gmail.com and hotel@googlemail.com reach the same inbox."""
 	keys = set()
 	digits = re.sub(r"\D", "", phone or "")
 	if len(digits) >= 7:
 		keys.add("p:" + digits[-9:])
 	local, _, domain = (email or "").strip().lower().partition("@")
 	if local and domain:
-		keys.add(f"e:{local.split('+', 1)[0]}@{domain}")
+		local = local.split("+", 1)[0]
+		if domain in DOTLESS_MAIL_DOMAINS:
+			local, domain = local.replace(".", ""), DOTLESS_MAIL_DOMAINS[0]
+		keys.add(f"e:{local}@{domain}")
 	return keys
 
 
@@ -101,12 +112,35 @@ def _note_ip_booking(reservation: str) -> None:
 			expires_in_sec=24 * 3600)
 
 
-def _assert_booking_quota(property: str, phone: str, email: str) -> None:
+def _busiest_unguaranteed_night(property: str, check_in_date: str,
+                                check_out_date: str) -> int:
+	"""The most rooms that website bookings nobody has paid for take on any
+	night of this stay: holds waiting for their code or payment, and
+	confirmed pay-at-hotel bookings that haven't arrived."""
+	rows = frappe.db.sql(
+		"""SELECT check_in_date, check_out_date FROM `tabReservation`
+		   WHERE property = %(p)s AND source = 'Website'
+		     AND (status IN ('Held', 'Pending Payment')
+		          OR (status = 'Confirmed' AND COALESCE(advance_paid, 0) <= 0))
+		     AND check_in_date < %(co)s AND check_out_date > %(ci)s""",
+		{"p": property, "ci": check_in_date, "co": check_out_date}, as_dict=True)
+	busiest = 0
+	for i in range(max(date_diff(check_out_date, check_in_date), 1)):
+		night = getdate(add_days(check_in_date, i))
+		busiest = max(busiest, sum(
+			1 for r in rows
+			if getdate(r.check_in_date) <= night < getdate(r.check_out_date)))
+	return busiest
+
+
+def _assert_booking_quota(property: str, phone: str, email: str,
+                          check_in_date: str, check_out_date: str) -> None:
 	"""An anonymous caller can take rooms off sale (and off the OTAs) with
 	nothing but an email address, so how many unguaranteed website bookings
 	one address, one contact and one property can have open is capped. Real
 	guests stay far below every cap; larger parties book through the hotel."""
 	busy = "Online booking is busy right now. Please try again in a few minutes or contact the hotel."
+	rooms = frappe.db.count("Room", {"property": property})
 
 	# one address: bookings per day, and holds nobody has verified or paid yet
 	recent = _recent_ip_bookings()
@@ -124,28 +158,45 @@ def _assert_booking_quota(property: str, phone: str, email: str) -> None:
 
 	# one property: holds that nobody has verified or paid yet
 	cap = cint(site_conf("public_max_unconfirmed")) or max(3, math.ceil(
-		frappe.db.count("Room", {"property": property}) * PUBLIC_UNCONFIRMED_SHARE))
+		rooms * PUBLIC_UNCONFIRMED_SHARE))
 	if frappe.db.count("Reservation", {
 			"property": property, "source": "Website",
 			"status": ("in", UNCONFIRMED_STATUSES)}) >= cap:
 		frappe.throw(busy)
+	# ...and on each night, rooms taken by website bookings with nothing paid:
+	# an emailed code confirms a pay-at-hotel booking, and from then on it
+	# holds its room until the guest arrives (or the no-show audit)
+	cap = cint(site_conf("public_max_unguaranteed")) or max(3, math.ceil(
+		rooms * PUBLIC_UNGUARANTEED_SHARE))
+	if _busiest_unguaranteed_night(property, check_in_date, check_out_date) >= cap:
+		frappe.throw(_("Online booking for these dates is full. Please contact the hotel to book."))
 
-	# one contact: open website bookings that haven't arrived yet
+	# one contact: open website bookings that haven't arrived yet, and the
+	# room-nights it booked in the last day
 	mine = _contact_keys(phone, email)
 	open_rows = frappe.db.sql(
-		"""SELECT g.phone, g.email FROM `tabReservation` r
+		"""SELECT g.phone, g.email, r.check_in_date, r.check_out_date, r.creation
+		   FROM `tabReservation` r
 		   JOIN `tabGuest` g ON g.name = r.guest
 		   WHERE r.source = 'Website'
 		     AND r.status IN ('Held', 'Pending Payment', 'Confirmed', 'Requested')
 		     AND r.check_out_date >= %s
 		   ORDER BY r.creation DESC LIMIT 2000""",
 		(nowdate(),), as_dict=True)
-	same = sum(1 for row in open_rows
-	           if mine & _contact_keys(row.phone, row.email))
-	if same >= cint(site_conf("public_max_open_per_contact")
-	                or PUBLIC_MAX_OPEN_PER_CONTACT):
+	same = [row for row in open_rows
+	        if mine & _contact_keys(row.phone, row.email)]
+	if len(same) >= cint(site_conf("public_max_open_per_contact")
+	                     or PUBLIC_MAX_OPEN_PER_CONTACT):
 		frappe.throw("You already have bookings open with this phone or "
 		             "email. Please contact the hotel to book more rooms.")
+	since = add_to_date(now_datetime(), hours=-24)
+	room_nights = date_diff(check_out_date, check_in_date) + sum(
+		date_diff(row.check_out_date, row.check_in_date)
+		for row in same if get_datetime(row.creation) > since)
+	if room_nights > cint(site_conf("public_max_room_nights_per_contact")
+	                      or PUBLIC_MAX_ROOM_NIGHTS_PER_CONTACT):
+		frappe.throw(_("That's more nights than we can hold online for one guest "
+		               "in a day. Please contact the hotel to book."))
 
 
 def _room_type_filters(property: str, listing_slug: str | None = None,
@@ -824,9 +875,15 @@ def book(property: str, room_type: str, check_in_date: str,
 	email = (email or "").strip()
 	if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
 		frappe.throw("A valid email is required - we send your booking code there.")
+	from kamra.api import assert_party
+	adults, children = assert_party(adults, children)
 
 	prop = frappe.get_cached_doc("Property", property)
 	_assert_publicly_bookable(prop, check_in_date, check_out_date, room_type)
+	# only this hotel's own meal plans, at its own price
+	if meal_plan and not frappe.db.exists(
+			"Meal Plan", {"name": meal_plan, "property": property, "disabled": 0}):
+		frappe.throw(_("This meal plan can't be booked online."))
 	# a blacklisted phone is refused without saying who or why
 	if frappe.db.exists("Guest", {"phone": phone.strip(), "blacklisted": 1}):
 		frappe.throw("We can't take this booking online. Please contact the hotel.")
@@ -862,7 +919,7 @@ def book(property: str, room_type: str, check_in_date: str,
 	# (create_booking), so it takes nothing new and needs no quota
 	replay = bool(key and find_by_idempotency(property, key))
 	if not replay:
-		_assert_booking_quota(property, phone, email)
+		_assert_booking_quota(property, phone, email, check_in_date, check_out_date)
 
 	# Peek at payment terms before insert so Instant can choose status.
 	q = price_quote(

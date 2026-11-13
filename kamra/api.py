@@ -10,6 +10,7 @@ import math
 import frappe
 from kamra.localization import format_money
 from frappe import _
+from frappe.rate_limiter import rate_limit
 from frappe.utils import add_days, cint, get_datetime, getdate, now_datetime, nowdate
 
 from kamra.authz import require_it_admin, require_roles
@@ -3472,7 +3473,8 @@ def send_precheckin_link(reservation: str, channel: str = "WhatsApp"):
 	the desk to share. Marks when it went out so the arrivals board can show it."""
 	res = frappe.db.get_value(
 		"Reservation", reservation,
-		["name", "property", "guest", "guest_name", "precheckin_token"],
+		["name", "property", "guest", "guest_name", "precheckin_token",
+		 "source", "advance_paid"],
 		as_dict=True)
 	if not res:
 		frappe.throw("Reservation not found.")
@@ -3487,8 +3489,9 @@ def send_precheckin_link(reservation: str, channel: str = "WhatsApp"):
 	if phone:
 		try:
 			from kamra.agents_channels import send_outbound
+			from kamra.whatsapp import greeting_name
 			send_outbound(res.property, channel, phone,
-			              f"Hi {res.guest_name}, check in early and skip the "
+			              f"Hi {greeting_name(res)}, check in early and skip the "
 			              f"front-desk queue for your stay: {link}")
 			sent = True
 		except Exception:
@@ -3984,6 +3987,18 @@ def _find_or_create_guest(guest_name: str, phone: str | None,
 	return guest.name
 
 
+def assert_party(adults, children) -> tuple[int, int]:
+	"""A booking's party, as ints: at least one adult, and no negative
+	number of children (per-head child and meal prices would turn a negative
+	party into a discount, or a credit)."""
+	adults, children = cint(adults), cint(children)
+	if adults < 1:
+		frappe.throw(_("A stay needs at least one adult."))
+	if children < 0:
+		frappe.throw(_("The number of children can't be negative."))
+	return adults, children
+
+
 @frappe.whitelist()
 @require_roles("Front Desk", "Hotel Agent")
 def create_booking(property: str, room_type: str, check_in_date: str,
@@ -4024,6 +4039,7 @@ def create_booking(property: str, room_type: str, check_in_date: str,
 	from kamra.crs import assert_property_access
 	from kamra.reservation_state import find_by_idempotency, lock_sius_for_booking
 	assert_property_access(property)
+	adults, children = assert_party(adults, children)
 
 	key = (idempotency_key or "").strip() or None
 	if key:
@@ -4485,9 +4501,13 @@ def cashier_pin_status(property: str):
 
 @frappe.whitelist(methods=["POST"])
 @require_roles("Finance", "Front Desk", "Revenue Manager", "Housekeeping")
+@rate_limit(limit=20, seconds=3600)
 def set_cashier_pin(pin: str, current_pin: str | None = None):
 	"""Set or change your own cashier PIN (4-8 digits). Changing an existing
-	PIN needs the current one — unless must_reset was set by an admin."""
+	PIN needs the current one — unless must_reset was set by an admin. The
+	current PIN is checked like every PIN check (kamra.authz.check_cashier_pin):
+	wrong tries count toward the same lockout, and a locked PIN can't be
+	changed."""
 	pin = str(pin or "").strip()
 	if not pin.isdigit() or not (4 <= len(pin) <= 8):
 		frappe.throw("The PIN must be 4 to 8 digits.")
@@ -4495,10 +4515,8 @@ def set_cashier_pin(pin: str, current_pin: str | None = None):
 	if frappe.db.exists("Cashier PIN", user):
 		doc = frappe.get_doc("Cashier PIN", user)
 		if not doc.get("must_reset"):
-			from frappe.utils.password import get_decrypted_password
-			stored = get_decrypted_password("Cashier PIN", user, "pin",
-			                                raise_exception=False)
-			if not current_pin or str(current_pin).strip() != str(stored):
+			from kamra.authz import check_cashier_pin
+			if not current_pin or not check_cashier_pin(doc, current_pin):
 				frappe.throw("Your current PIN is needed to change it.")
 		doc.pin = pin
 		doc.must_reset = 0
@@ -4533,6 +4551,8 @@ def reset_cashier_pin(user: str):
 		"pin_attempts": 0,
 	}).insert(ignore_permissions=True)
 	frappe.cache.delete_value(f"kamra_cashier_unlock:{user}")
+	from kamra.authz import clear_pin_lock
+	clear_pin_lock(user)
 	try:
 		from kamra.savings import log_action
 		log_action("reset_cashier_pin", "Cashier PIN", user, None,

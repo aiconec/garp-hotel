@@ -227,12 +227,18 @@ after_migrate = ["kamra.install.after_migrate"]
 # Guest has no property link, so Property User Permissions can't limit it;
 # these apply Kamra's stay-history rule to Frappe's own REST, Desk and
 # private file downloads too (see kamra.authz.guest_query_conditions).
+# Guest ID and address scans are for the roles that check IDs, on every path
+# Frappe serves a File by (see kamra.id_documents).
 permission_query_conditions = {
 	"Guest": "kamra.authz.guest_query_conditions",
+	"File": "kamra.id_documents.file_query_conditions",
 }
 
 has_permission = {
-	"Guest": "kamra.authz.guest_has_permission",
+	"Guest": ["kamra.authz.guest_has_permission",
+	          "kamra.id_documents.holder_has_permission"],
+	"Reservation": "kamra.id_documents.holder_has_permission",
+	"File": "kamra.id_documents.file_has_permission",
 }
 
 # Document Events
@@ -314,9 +320,14 @@ for _dt in _MONEY_DOCTYPES:
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "kamra.event.get_events"
-# }
+# The form's attachment list, without guest ID scans for roles that don't
+# check IDs (kamra.id_documents).
+override_whitelisted_methods = {
+	"frappe.desk.form.load.getdoc": "kamra.id_documents.getdoc",
+	"frappe.desk.form.load.get_docinfo": "kamra.id_documents.get_docinfo",
+	"frappe.desk.form.load.get_filtered_attachments":
+		"kamra.id_documents.get_filtered_attachments",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

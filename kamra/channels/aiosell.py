@@ -30,6 +30,7 @@ import hmac
 import json
 
 import frappe
+from frappe import _
 
 DEFAULT_BASE = "https://live.aiosell.com/api/v2/cm"
 # unresolved placeholders - a connection still carrying these is not live
@@ -63,21 +64,22 @@ def _base(conn) -> str:
 
 def _post(conn, path: str, payload, user: str, pwd: str):
 	"""POST JSON with Basic auth. Returns (ok, body). ok is true only when
-	both the HTTP status and AioSell's own `success` flag are good."""
-	import requests
-	from requests.auth import HTTPBasicAuth
+	both the HTTP status and AioSell's own `success` flag are good. When it
+	isn't, body is {"status": <HTTP status>}: a refused reply's body is never
+	passed on."""
+	from kamra.channels import transport
 
-	res = requests.post(f"{_base(conn)}/{path}", json=payload,
-	                    auth=HTTPBasicAuth(user, pwd),
-	                    headers={"Content-Type": "application/json"},
-	                    timeout=20)
+	res = transport.request("AioSell", "POST", f"{_base(conn)}/{path}",
+	                        json_body=payload, basic_auth=(user, pwd),
+	                        headers={"Content-Type": "application/json"},
+	                        timeout=20)
 	try:
 		body = res.json()
 	except Exception:
-		body = {"raw": res.text[:300]}
-	ok = (200 <= res.status_code < 300) and bool(
+		body = {}
+	ok = res.ok and isinstance(body, dict) and bool(
 		body.get("success") or body.get("status"))
-	return ok, body
+	return ok, (body if ok else {"status": res.status_code})
 
 
 def _runs(days: list[dict]):
@@ -135,17 +137,22 @@ def push_ari(conn, snapshot) -> tuple[bool, str]:
 
 	inv_updates, rate_updates = build_push_bodies(hotel, snapshot)
 
+	from kamra.channels.transport import ChannelHTTPError
+
 	results, ok_all = [], True
-	if inv_updates:
-		ok, body = _post(conn, f"update/{pms}",
-		                 {"hotelCode": hotel, "updates": inv_updates}, user, pwd)
-		ok_all = ok_all and ok
-		results.append("inv " + ("ok" if ok else str(body.get("message") or body)[:120]))
-	if rate_updates:
-		ok, body = _post(conn, f"update-rates/{pms}",
-		                 {"hotelCode": hotel, "updates": rate_updates}, user, pwd)
-		ok_all = ok_all and ok
-		results.append("rates " + ("ok" if ok else str(body.get("message") or body)[:120]))
+	try:
+		if inv_updates:
+			ok, body = _post(conn, f"update/{pms}",
+			                 {"hotelCode": hotel, "updates": inv_updates}, user, pwd)
+			ok_all = ok_all and ok
+			results.append("inv " + ("ok" if ok else f"refused (HTTP {body.get('status')})"))
+		if rate_updates:
+			ok, body = _post(conn, f"update-rates/{pms}",
+			                 {"hotelCode": hotel, "updates": rate_updates}, user, pwd)
+			ok_all = ok_all and ok
+			results.append("rates " + ("ok" if ok else f"refused (HTTP {body.get('status')})"))
+	except ChannelHTTPError as exc:
+		return False, str(exc)
 	if not results:
 		return False, "No room mappings to push."
 	detail = (f"{len(inv_updates)} inv + {len(rate_updates)} rate blocks; "
@@ -156,17 +163,18 @@ def push_ari(conn, snapshot) -> tuple[bool, str]:
 def fetch_property_details(conn) -> dict:
 	"""GET /property_details - the hotel_id, room_id and rateplan_id codes to
 	map Kamra's room types onto. Call this first, once per property."""
-	import requests
-	from requests.auth import HTTPBasicAuth
+	from kamra.channels import transport
 
 	creds, reason = _creds(conn)
 	if not creds:
 		frappe.throw(reason)
 	user, pwd, pms, hotel = creds
-	res = requests.get(f"{_base(conn)}/property_details/{hotel}",
-	                   params={"partnerId": pms},
-	                   auth=HTTPBasicAuth(user, pwd), timeout=20)
-	res.raise_for_status()
+	res = transport.request("AioSell", "GET", f"{_base(conn)}/property_details/{hotel}",
+	                        params={"partnerId": pms}, basic_auth=(user, pwd),
+	                        timeout=20)
+	if not res.ok:
+		frappe.throw(_("AioSell refused the property details request (HTTP {0}).").format(
+			res.status_code))
 	return res.json()
 
 

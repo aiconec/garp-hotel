@@ -32,6 +32,7 @@ copy over-promise.
 
 import base64
 import io
+import sys
 
 import frappe
 from frappe import _
@@ -183,3 +184,159 @@ def discard_id_document(reservation: str) -> int:
 	except Exception:
 		frappe.log_error(title=f"ID document discard failed: {reservation}")
 	return gone
+
+
+# ---------------------------------------------------------------------------
+# Who may open a scan
+# ---------------------------------------------------------------------------
+#
+# A scan is a private File attached to its booking (or, for the guest's own
+# ID and address proof, to the Guest profile). Frappe lets anyone who may
+# READ that booking or profile download it: File.has_permission falls through
+# to the attached document. Housekeeping, Finance and Revenue Manager all read
+# bookings, so on Frappe's terms they could fetch every guest's KTP or
+# passport. A scan is for the people who check IDs - the roles that read the
+# permlevel-1 ID fields, the same ones id_document_image admits - whatever
+# else a role may read.
+#
+# Frappe reaches a File's permission three ways, and each needs its own gate:
+#   - frappe.has_permission on the File (REST /api/resource/File/<name>, the
+#     Desk form): the File has_permission hook, file_has_permission.
+#   - the module function File.has_permission, called directly by the
+#     /private/files/ download, download_file, zip_files and the cloud-storage
+#     redirect. It consults no hook for File; it asks the attached document.
+#     So the Reservation and Guest hooks (holder_has_permission) refuse the
+#     read when it is being asked on behalf of a scan.
+#   - lists of File rows (REST lists, the form's attachment sidebar): the
+#     File permission_query_conditions hook, and the getdoc / get_docinfo /
+#     get_filtered_attachments overrides, leave scans out for everyone else.
+# The rule reads the File row, so scans attached before this rule are covered
+# too.
+
+ID_VIEWER_ROLES = ("Front Desk", "Hotel Agent", "Hotel Admin", "System Manager")
+
+# where scans hang: the fields they fill, and the names this module and the
+# desk give them (id-<booking>.jpg, occupant-id-<booking>-<n>.jpg on a booking;
+# id-<guest>.jpg, address-<guest>.jpg on a profile)
+_SCAN_FIELDS = {
+	"Reservation": ("id_document", "id_file"),
+	"Guest": ("id_file", "address_proof_file"),
+}
+_SCAN_PREFIXES = {
+	"Reservation": ("id-", "occupant-id-"),
+	"Guest": ("id-", "address-"),
+}
+
+
+def is_id_scan(file) -> bool:
+	"""Is this File row (a doc or a dict) a guest's ID or address scan?"""
+	doctype = file.get("attached_to_doctype")
+	if doctype not in _SCAN_FIELDS:
+		return False
+	if file.get("attached_to_field") in _SCAN_FIELDS[doctype]:
+		return True
+	return (file.get("file_name") or "").lower().startswith(_SCAN_PREFIXES[doctype])
+
+
+def may_view_id_scans(user: str | None = None) -> bool:
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
+	return bool(set(ID_VIEWER_ROLES) & set(frappe.get_roles(user)))
+
+
+def file_has_permission(doc, ptype=None, user=None, debug=False) -> bool:
+	"""has_permission hook for File. Frappe treats a falsy return as a deny."""
+	if not is_id_scan(doc):
+		return True
+	return may_view_id_scans(user)
+
+
+def _file_being_authorised():
+	"""The File whose permission Frappe's File.has_permission is deciding
+	right now, when that is what asked for this booking's or profile's
+	permission; else None. That function hands the decision to the attached
+	document and passes nothing on, so the frame is the only place the File
+	can be read from (kamra.authz.kamra_initiated reads frames the same way)."""
+	frame = sys._getframe(1)
+	while frame is not None:
+		if frame.f_code.co_name == "has_permission" \
+				and frame.f_globals.get("__name__") == "frappe.core.doctype.file.file":
+			return frame.f_locals.get("doc")
+		frame = frame.f_back
+	return None
+
+
+def holder_has_permission(doc, ptype=None, user=None, debug=False) -> bool:
+	"""has_permission hook for Reservation and Guest. Reading the booking
+	stays as it is; reading it in order to download a scan attached to it is
+	refused to anyone who doesn't check IDs."""
+	f = _file_being_authorised()
+	if f is None or not is_id_scan(f):
+		return True
+	return may_view_id_scans(user)
+
+
+def _scan_condition(doctype: str) -> str:
+	fields = ", ".join(frappe.db.escape(f) for f in _SCAN_FIELDS[doctype])
+	names = " or ".join(
+		f"lower(left(coalesce(`tabFile`.`file_name`, ''), {len(p)})) = {frappe.db.escape(p)}"
+		for p in _SCAN_PREFIXES[doctype])
+	return (f"(`tabFile`.`attached_to_doctype` = {frappe.db.escape(doctype)}"
+	        f" and (coalesce(`tabFile`.`attached_to_field`, '') in ({fields}) or {names}))")
+
+
+def file_query_conditions(user: str | None = None, doctype: str | None = None) -> str:
+	"""permission_query_conditions hook for File: lists leave scans out for
+	anyone who doesn't check IDs (the same rule as is_id_scan)."""
+	if may_view_id_scans(user):
+		return ""
+	holders = ", ".join(frappe.db.escape(dt) for dt in _SCAN_FIELDS)
+	scans = " or ".join(_scan_condition(dt) for dt in _SCAN_FIELDS)
+	return (f"(coalesce(`tabFile`.`attached_to_doctype`, '') not in ({holders})"
+	        f" or not ({scans}))")
+
+
+def _hide_scans_from_docinfo() -> None:
+	"""Drop scans from the docinfo a getdoc / get_docinfo call just built:
+	the attachment list and the "Attachment" timeline entries that link them."""
+	docinfo = frappe.response.get("docinfo")
+	if not docinfo or docinfo.get("doctype") not in _SCAN_FIELDS or may_view_id_scans():
+		return
+	hidden = [a for a in docinfo.get("attachments") or []
+	          if is_id_scan({**a, "attached_to_doctype": docinfo.doctype})]
+	if not hidden:
+		return
+	docinfo.attachments = [a for a in docinfo.attachments if a not in hidden]
+	marks = {m for a in hidden for m in (a.get("file_url"), a.get("file_name")) if m}
+	docinfo.attachment_logs = [
+		c for c in docinfo.get("attachment_logs") or []
+		if not any(m in (c.get("content") or "") for m in marks)]
+
+
+@frappe.whitelist()
+def getdoc(doctype: str, name: str | int):
+	"""frappe.desk.form.load.getdoc, without other people's ID scans in the
+	attachment sidebar (override_whitelisted_methods)."""
+	from frappe.desk.form import load
+	load.getdoc(doctype, name)
+	_hide_scans_from_docinfo()
+
+
+@frappe.whitelist()
+def get_docinfo(doc=None, doctype: str | None = None, name: str | int | None = None):
+	"""frappe.desk.form.load.get_docinfo, the same way as getdoc above."""
+	from frappe.desk.form import load
+	load.get_docinfo(doc, doctype, name)
+	_hide_scans_from_docinfo()
+
+
+@frappe.whitelist()
+def get_filtered_attachments(dt: str, dn: str | int, filters: str):
+	"""frappe.desk.form.load.get_filtered_attachments (the attachment
+	gallery), the same way as getdoc above."""
+	from frappe.desk.form import load
+	rows = load.get_filtered_attachments(dt, dn, filters)
+	if dt in _SCAN_FIELDS and not may_view_id_scans():
+		rows = [r for r in rows if not is_id_scan({**r, "attached_to_doctype": dt})]
+	return rows

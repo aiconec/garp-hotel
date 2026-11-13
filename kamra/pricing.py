@@ -47,7 +47,7 @@ def occupancy_rate(rt, adults: int, children: int, date=None) -> Decimal:
 	`small_group_days`.
 	"""
 	adults = max(1, int(adults or 1))
-	children = int(children or 0)
+	children = max(0, int(children or 0))  # a head count never lowers a price
 
 	small = _small_group_rate(rt, adults, date)
 	if small is not None:
@@ -250,6 +250,7 @@ def quote(
 	day_use = nights == 0
 	if nights < 0:
 		frappe.throw("Check-out cannot be before check-in.")
+	children = max(0, int(children or 0))  # see occupancy_rate
 
 	rt = frappe.get_doc("Room Type", room_type)
 	inclusive = rates_include_tax(property)

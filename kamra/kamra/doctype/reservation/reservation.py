@@ -111,6 +111,55 @@ class Reservation(Document):
 		self.validate_cancellation_path()
 		self.validate_checkout_path()
 		self.apply_pricing()
+		self.carry_agreed_price()
+
+	def carry_agreed_price(self):
+		"""A stay with a price of its own (auto_price off: an OTA's total, a
+		negotiated or imported amount) keeps its nightly price when its
+		nights change. The folio bills each night from that stored price
+		(kamra.folio._booked_nights), so without this an extended stay
+		would spread the old total over more nights and the extra nights
+		would be free, and a shortened one would bill the old total for
+		fewer nights. The one-time cleaning fee stays as it was. Applies
+		only when the amounts were not edited in the same save: then the
+		person editing set the price themselves."""
+		from frappe.utils import flt
+
+		if cint(self.get("auto_price")) or self.is_new():
+			return
+		before = self.get_doc_before_save()
+		if not before:
+			return
+		old_n, new_n = cint(before.get("nights")), cint(self.nights)
+		if old_n <= 0 or new_n <= 0 or new_n == old_n:
+			return
+		fields = ("amount_before_tax", "tax_amount", "amount_after_tax")
+		if any(flt(self.get(f)) != flt(before.get(f)) for f in fields):
+			return
+
+		from kamra.folio import _cleaning_fee
+
+		clean, clean_rate = _cleaning_fee(before)
+		clean_tax = clean * flt(clean_rate) / 100
+
+		def carried(total, one_time):
+			total = flt(total)
+			if total <= 0:
+				return total
+			if one_time >= total:
+				one_time = 0.0
+			return one_time + (total - one_time) / old_n * new_n
+
+		pre = carried(before.get("amount_before_tax"), clean)
+		tax = carried(before.get("tax_amount"), clean_tax)
+		after = flt(before.get("amount_after_tax"))
+		if after > 0 and pre > 0 and abs(flt(before.get("amount_before_tax"))
+		                                 + flt(before.get("tax_amount")) - after) <= 1:
+			after = pre + tax
+		else:
+			after = carried(after, clean + clean_tax)
+		for f, v in zip(fields, (pre, tax, after)):
+			self.set(f, flt(v, self.precision(f)))
 
 	def validate_minimum_nights(self):
 		"""Property.minimum_nights is a hard floor for overnight stays."""
@@ -178,6 +227,11 @@ class Reservation(Document):
 		adults, children = cint(self.adults), cint(self.children)
 		if adults < 1:
 			frappe.throw(_("A stay needs at least one adult."),
+				title=_("Room capacity"))
+		# a negative party would bill each night below the price it was
+		# booked at (child rate and meal plan are per head)
+		if children < 0:
+			frappe.throw(_("The number of children can't be negative."),
 				title=_("Room capacity"))
 		cap = frappe.db.get_value(
 			"Room Type", self.room_type,

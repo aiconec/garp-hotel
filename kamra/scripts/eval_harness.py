@@ -1904,6 +1904,358 @@ def t43():
 	# the harness rolls the DB back but save_file wrote real bytes to disk;
 	# clean up after ourselves rather than leaving them for the runner
 	id_documents.discard_id_document(res.name)
+@check("ID document: only the roles that check IDs open a scan, on every path Frappe serves it")
+def t88():
+	"""Housekeeping, Finance and Revenue Manager read bookings; Frappe lets
+	whoever reads a booking download what is attached to it. The scan is for
+	the roles that check IDs, and the rule holds for scans already stored."""
+	from frappe.core.doctype.file import file as file_module
+
+	from kamra import api, id_documents
+	g = _guest("ID Path Guest", "+91 70000 08801")
+	res = _res(g, "2035-05-01", "2035-05-03", ROOM)
+	frappe.set_user("frontdesk@kamra.local")  # nosemgrep: frappe-setuser -- controlled user context switch; target user is validated and scope-limited in this flow
+	try:
+		api.upload_id_document(res.name, _id_photo())
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+	scan = frappe.get_doc("File", _id_files(res.name)[0])
+	assert id_documents.is_id_scan(scan), scan.file_name
+	# an occupant's scan and a profile's address proof are scans too; an
+	# ordinary attachment on the booking is not
+	assert id_documents.is_id_scan({"attached_to_doctype": "Reservation",
+	                                 "file_name": f"occupant-id-{res.name}-1.jpg"})
+	assert id_documents.is_id_scan({"attached_to_doctype": "Guest",
+	                                 "attached_to_field": "address_proof_file",
+	                                 "file_name": "IMG_0001.jpg"})
+	note = frappe.get_doc({
+		"doctype": "File", "file_name": "eval-booking-note.txt",
+		"attached_to_doctype": "Reservation", "attached_to_name": res.name,
+		"is_private": 1, "content": b"late arrival",
+	}).insert(ignore_permissions=True)
+	assert not id_documents.is_id_scan(note)
+
+	# someone in a role that reads bookings but doesn't check IDs
+	readers = set(frappe.get_all(
+		"Custom DocPerm", filters={"parent": "Reservation", "permlevel": 0, "read": 1},
+		pluck="role")) or set(frappe.get_all(
+		"DocPerm", filters={"parent": "Reservation", "permlevel": 0, "read": 1},
+		pluck="role"))
+	role = next((r for r in ("Housekeeping", "Finance", "Revenue Manager",
+	                         "Housekeeping Supervisor") if r in readers), "Housekeeping")
+	u = "eval.idpeek@kamra.local"
+	if not frappe.db.exists("User", u):
+		frappe.get_doc({
+			"doctype": "User", "email": u, "first_name": "Peek", "enabled": 1,
+			"user_type": "System User", "send_welcome_email": 0,
+			"roles": [{"role": role}],
+		}).insert(ignore_permissions=True)
+	reads_booking = frappe.has_permission("Reservation", "read", doc=res, user=u)
+	if role in readers:
+		assert reads_booking, f"{role} should still read the booking itself"
+
+	# the download route (/private/files/, download_file, zip_files) and the
+	# REST route both refuse the scan...
+	assert not file_module.has_permission(scan, "read", user=u), "scan downloadable"
+	assert not frappe.has_permission("File", "read", doc=scan, user=u), "scan readable over REST"
+	# ...while the booking's other attachments behave as they always did
+	assert bool(file_module.has_permission(note, "read", user=u)) == bool(reads_booking)
+	# the desk who captured it still opens it, and so does an admin
+	assert file_module.has_permission(scan, "read", user="frontdesk@kamra.local")
+	assert frappe.has_permission("File", "read", doc=scan, user="frontdesk@kamra.local")
+	assert frappe.has_permission("File", "read", doc=scan, user="Administrator")
+
+	# lists and the form's attachment sidebar leave it out
+	frappe.set_user(u)  # nosemgrep: frappe-setuser -- controlled user context switch
+	try:
+		listed = set(frappe.get_list("File", filters={
+			"attached_to_doctype": "Reservation", "attached_to_name": res.name},
+			pluck="name"))
+		assert scan.name not in listed, "File list shows the scan"
+		if reads_booking:
+			assert note.name in listed, "File list lost an ordinary attachment"
+			frappe.local.response = frappe._dict({"docs": []})
+			id_documents.getdoc("Reservation", res.name)
+			shown = {a.name for a in frappe.response.docinfo.attachments}
+			assert scan.name not in shown, "form sidebar shows the scan"
+			assert note.name in shown, "form sidebar lost an ordinary attachment"
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+	frappe.local.response = frappe._dict({"docs": []})
+	id_documents.getdoc("Reservation", res.name)
+	assert scan.name in {a.name for a in frappe.response.docinfo.attachments}, \
+		"an admin no longer sees the scan in the sidebar"
+
+	id_documents.discard_id_document(res.name)
+	frappe.delete_doc("File", note.name, ignore_permissions=True, delete_permanently=True)
+
+
+@check("party: no negative children or adult-less stays, on any booking path")
+def t89():
+	"""children=-6 on the public page billed each night below the booked
+	price (child rate and meal plan are per head)."""
+	from kamra import api, public_api
+
+	def refused(fn):
+		try:
+			fn()
+		except (frappe.ValidationError, frappe.PermissionError):
+			return True
+		return False
+
+	ci, co = add_days(nowdate(), 44), add_days(nowdate(), 46)
+	other = "EVAL Party Hotel"
+	if not frappe.db.exists("Property", other):
+		frappe.get_doc({
+			"doctype": "Property", "property_name": other, "country": "India",
+			"currency": "INR", "city": "Elsewhere", "gst_mode": "Slab",
+			"gst_slab_threshold": 7500, "gst_rate_low": 5, "gst_rate_high": 18,
+		}).insert(ignore_permissions=True)
+	foreign_plan = frappe.get_doc({
+		"doctype": "Meal Plan", "property": other, "code": "AP",
+		"price_per_adult": 1, "price_per_child": -5000,
+	}).insert(ignore_permissions=True).name
+
+	frappe.set_user("Guest")  # nosemgrep: frappe-setuser -- controlled user context switch
+	try:
+		for adults, children in ((2, -6), (0, 0), (-1, 2)):
+			assert refused(lambda: public_api.book(
+				property=P, room_type=RT, check_in_date=ci, check_out_date=co,
+				guest_name="Party Web", phone="+919812300891",
+				email="party.web@example.com", adults=adults, children=children)), \
+				f"public booking took adults={adults} children={children}"
+		# another hotel's meal plan is not for sale here
+		assert refused(lambda: public_api.book(
+			property=P, room_type=RT, check_in_date=ci, check_out_date=co,
+			guest_name="Party Web", phone="+919812300892",
+			email="party.plan@example.com", meal_plan=foreign_plan))
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+
+	assert refused(lambda: api.create_booking(
+		property=P, room_type=RT, check_in_date=ci, check_out_date=co,
+		guest_name="Party Desk", phone="+919812300893", children=-1)), \
+		"the desk booked a negative party"
+	g = _guest("Party Doc", "+91 70000 08903")
+	for field, value in (("children", -1), ("adults", 0), ("infants", -1),
+	                     ("extra_beds", -2)):
+		doc = frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g,
+			"room_type": RT, "check_in_date": ci, "check_out_date": co,
+			"adults": 2, "auto_price": 1, field: value,
+		})
+		assert refused(lambda: doc.insert(ignore_permissions=True)), \
+			f"a Reservation saved {field}={value}"
+	# an edit can't sneak one in either
+	res = _res(g, ci, co)
+	res.children = -3
+	assert refused(lambda: res.save(ignore_permissions=True)), "an edit saved children=-3"
+
+	# a head count never lowers a price, even on a row that predates the check
+	from kamra.pricing import occupancy_rate
+	rt = frappe.get_doc("Room Type", RT)
+	assert occupancy_rate(rt, 2, -6) == occupancy_rate(rt, 2, 0)
+
+
+@check("public booking: email-confirmed pay-at-hotel bookings are rationed per night and per inbox")
+def t90():
+	"""An emailed code confirms a pay-at-hotel website booking, which then
+	holds its room until arrival: one IP and one Gmail inbox (a dotted
+	spelling per booking) could sell a hotel out for a month."""
+	from kamra import public_api as pub
+
+	keys = pub._contact_keys
+	assert keys(None, "h.o.t.e.l.hold+7@gmail.com") == keys(None, "hotelhold@googlemail.com") \
+		== {"e:hotelhold@gmail.com"}, keys(None, "h.o.t.e.l.hold+7@gmail.com")
+	# other providers' dots are part of the address
+	assert keys(None, "h.otel@example.com") != keys(None, "hotel@example.com")
+
+	def refused(fn):
+		try:
+			fn()
+		except (frappe.ValidationError, frappe.PermissionError):
+			return True
+		return False
+
+	def website(name, phone, email, ci, co):
+		g = _guest(name, phone)
+		frappe.db.set_value("Guest", g, "email", email)
+		return frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g, "room_type": RT,
+			"check_in_date": ci, "check_out_date": co, "adults": 2,
+			"auto_price": 1, "source": "Website", "status": "Confirmed",
+		}).insert(ignore_permissions=True).name
+
+	conf = frappe.local.conf
+	knobs = ("hotel_public_max_unguaranteed", "hotel_public_max_unconfirmed")
+	saved = {k: conf.get(k) for k in knobs}
+	conf["hotel_public_max_unguaranteed"] = 2
+	conf["hotel_public_max_unconfirmed"] = 100  # earlier checks leave holds at P
+	try:
+		ci = add_days(nowdate(), 120)
+		co = add_days(ci, 3)
+		made = [website(f"Unpaid Web {i}", f"+91 70000 0900{i}",
+		                f"unpaid{i}@example.com", ci, co) for i in range(2)]
+		inside = (str(add_days(ci, 1)), str(add_days(ci, 2)))
+		assert refused(lambda: pub._assert_booking_quota(
+			P, "+91 70000 09100", "third@example.com", *inside)), \
+			"a night already half held by unpaid website bookings sold again"
+		# other nights are untouched
+		pub._assert_booking_quota(P, "+91 70000 09101", "fourth@example.com",
+		                          str(co), str(add_days(co, 2)))
+		# an advance paid makes a booking guaranteed: it stops counting
+		frappe.db.set_value("Reservation", made[0], "advance_paid", 1000)
+		pub._assert_booking_quota(P, "+91 70000 09102", "fifth@example.com", *inside)
+
+		# one inbox holds at most a month of room-nights a day
+		far = add_days(nowdate(), 300)
+		website("Long Web", "+91 70000 09103", "room.nights@gmail.com",
+		        add_days(nowdate(), 200), add_days(nowdate(), 225))  # 25 nights
+		assert refused(lambda: pub._assert_booking_quota(
+			P, "+91 70000 09104", "r.oom.nights+2@gmail.com",
+			str(far), str(add_days(far, 6)))), "the same inbox took 31 nights in a day"
+		pub._assert_booking_quota(P, "+91 70000 09105", "r.oom.nights+3@gmail.com",
+		                          str(far), str(add_days(far, 5)))
+	finally:
+		for k, v in saved.items():
+			if v is None:
+				conf.pop(k, None)
+			else:
+				conf[k] = v
+
+
+@check("folio: an extended or shortened stay keeps the nightly price it was sold at")
+def t91b():
+	"""A stay with a price of its own keeps that price per night when the
+	desk extends or shortens it, so the folio (which bills each night from
+	the stored price) neither gives the extra nights away nor bills the old
+	total for fewer nights. (Rack is 4000 a night, 5% tax - see t1.)"""
+	from kamra.api import amend_stay
+
+	keep = frappe.db.get_value("Property", P, ["cleaning_fee"], as_dict=True)
+	frappe.db.set_value("Property", P, "cleaning_fee", 0)
+	frappe.clear_document_cache("Property", P)
+	try:
+		g = _guest("V7 Extended", "+91 70000 09211")
+		res = frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g,
+			"room_type": RT, "check_in_date": "2031-04-01",
+			"check_out_date": "2031-04-03", "adults": 2, "auto_price": 0,
+			"amount_before_tax": 7000, "tax_amount": 350, "amount_after_tax": 7350,
+		}).insert(ignore_permissions=True)
+		res.db_set("status", "Confirmed")
+
+		amend_stay(res.name, "2031-04-01", "2031-04-05")
+		res.reload()
+		assert float(res.amount_before_tax) == 14000, res.amount_before_tax
+		assert float(res.tax_amount) == 700, res.tax_amount
+		assert float(res.amount_after_tax) == 14700, res.amount_after_tax
+
+		amend_stay(res.name, "2031-04-01", "2031-04-02")
+		res.reload()
+		assert float(res.amount_before_tax) == 3500, res.amount_before_tax
+
+		# amounts edited in the same save are the desk's own price
+		res.check_out_date = "2031-04-03"
+		res.amount_before_tax, res.tax_amount, res.amount_after_tax = 6000, 300, 6300
+		res.save(ignore_permissions=True)
+		assert float(res.amount_before_tax) == 6000, res.amount_before_tax
+	finally:
+		frappe.db.set_value("Property", P, "cleaning_fee", keep.cleaning_fee)
+		frappe.clear_document_cache("Property", P)
+
+
+@check("folio: each night bills the price the booking was sold at - OTA, negotiated, rate plan")
+def t91():
+	"""The night audit and checkout used to post occupancy + season for
+	every booking: an OTA's price, a negotiated amount, a rate plan and a
+	quoted demand premium never reached the bill. (Rack here is 4000 a
+	night for two adults, 5% tax - see t1.)"""
+	import json
+
+	from kamra.folio import post_remaining_nights
+
+	keep = frappe.db.get_value("Property", P, [
+		"cleaning_fee", "room_levy_percent", "rates_include_tax"], as_dict=True)
+
+	def house(**values):
+		frappe.db.set_value("Property", P, values)
+		frappe.clear_document_cache("Property", P)
+
+	def stay(name, phone, ci, co, **kw):
+		g = _guest(name, phone)
+		return frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g,
+			"room_type": RT, "check_in_date": ci, "check_out_date": co,
+			"adults": 2, **kw,
+		}).insert(ignore_permissions=True)
+
+	def billed(res):
+		post_remaining_nights(res)
+		folio = frappe.get_doc("Folio", frappe.db.get_value(
+			"Folio", {"reservation": res.name, "folio_type": "Guest"}))
+		rooms = sorted((str(c.posting_date), round(float(c.rate), 2), float(c.gst_rate))
+		               for c in folio.charges if c.charge_type == "Room")
+		return [r for _, r, _ in rooms], [g for *_, g in rooms], folio
+
+	house(cleaning_fee=0, room_levy_percent=0, rates_include_tax=0)
+	try:
+		# an OTA sold two nights for 9450 all-in: 4500 + 5% a night, not 4000
+		ota = stay("V7 OTA", "+91 70000 09201", "2031-03-01", "2031-03-03",
+		           source="OTA", channel="Booking.com", ota_ref="EVAL-V7-1",
+		           auto_price=0, amount_after_tax=9450)
+		rates, taxes, _ = billed(ota)
+		assert rates == [4500.0, 4500.0], rates
+		assert taxes == [5.0, 5.0], taxes
+
+		# a negotiated stay: the desk held 3500 a night before tax
+		neg = stay("V7 Negotiated", "+91 70000 09202", "2031-03-05", "2031-03-07",
+		           auto_price=0, amount_before_tax=7000, tax_amount=350,
+		           amount_after_tax=7350)
+		rates, _, _ = billed(neg)
+		assert rates == [3500.0, 3500.0], rates
+
+		# a corporate rate plan 20% off: 3200 a night, as quoted
+		plan = frappe.get_doc({
+			"doctype": "Rate Plan", "property": P, "rate_plan_name": "EVAL Corporate",
+			"code": "EVCORP", "modifier_type": "Percent", "modifier_value": -20,
+		}).insert(ignore_permissions=True).name
+		corp = stay("V7 Rate Plan", "+91 70000 09203", "2031-03-09", "2031-03-11",
+		            auto_price=1, rate_plan=plan)
+		assert float(corp.amount_before_tax) == 6400, corp.amount_before_tax
+		rates, _, _ = billed(corp)
+		assert rates == [3200.0, 3200.0], rates
+
+		# an engine-priced stay bills its quote's nights (a demand premium
+		# quoted at booking stays billed after the house empties)
+		auto = stay("V7 Quoted", "+91 70000 09204", "2031-03-13", "2031-03-14",
+		            auto_price=1)
+		snap = json.loads(auto.quote_snapshot)
+		snap["nightly"][0]["rate"], snap["room_total"] = 4800, 4800
+		frappe.db.set_value("Reservation", auto.name, "quote_snapshot", json.dumps(snap))
+		auto.reload()
+		rates, _, _ = billed(auto)
+		assert rates == [4800.0], rates
+
+		# a stored total is the whole stay: the cleaning fee and the levy
+		# come out of it, not on top
+		house(cleaning_fee=500, room_levy_percent=10)
+		ota2 = stay("V7 OTA Fees", "+91 70000 09205", "2031-03-16", "2031-03-18",
+		            source="OTA", channel="Agoda", ota_ref="EVAL-V7-2",
+		            auto_price=0, amount_after_tax=9450)
+		_, _, folio = billed(ota2)
+		assert abs(float(folio.charges_total) - 9000) < 0.05, folio.charges_total
+		house(cleaning_fee=0, room_levy_percent=0)
+
+		# no stored price at all: today's rate, as before
+		bare = stay("V7 Bare", "+91 70000 09206", "2031-03-20", "2031-03-21",
+		            auto_price=0)
+		rates, _, _ = billed(bare)
+		assert rates == [4000.0], rates
+	finally:
+		house(**{k: v or 0 for k, v in keep.items()})
+
+
 @check("pre-checkin: ID photo stored privately, discarded at checkout per policy")
 def t34():
 	import base64
@@ -2506,6 +2858,63 @@ def t48():
 		whatsapp._post_graph = real_post
 
 
+@check("WhatsApp: an unpaid website booking is greeted as Guest, never by the name typed")
+def t94():
+	"""Anyone could book with phone=<victim> and a guest name that reads like
+	a phishing text, confirm with their own email, and the hotel's verified
+	number sent that text to the victim."""
+	import json
+
+	# nosemgrep: frappe-monkey-patching-not-allowed -- offline eval harness stubs the outbound transport for tests; not a production code path
+	from kamra import whatsapp
+
+	if not whatsapp.has_connection(P):
+		frappe.get_doc({
+			"doctype": "Channel Provider Connection", "property": P,
+			"channel": "WhatsApp", "provider": "Meta Business", "active": 1,
+			"phone_number": "+91 98450 00094", "external_account_id": "eval-phone-94",
+			"credentials": "eval-token", "webhook_secret": "eval-verify-94",
+			"tpl_booking_confirmation": "kamra_booking_confirmation",
+			"tpl_precheckin": "kamra_precheckin_link",
+		}).insert(ignore_permissions=True)
+	bait = "Akun Anda diblokir buka bit.ly/x"
+
+	def booking(source, phone):
+		g = _guest(bait, phone)
+		return frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g, "room_type": RT,
+			"check_in_date": add_days(nowdate(), 60), "check_out_date": add_days(nowdate(), 61),
+			"adults": 2, "auto_price": 1, "source": source,
+		}).insert(ignore_permissions=True)
+
+	sent = []
+	real_post = whatsapp._post_graph
+	whatsapp._post_graph = lambda c, payload: (sent.append(payload) or (True, f"wamid.v12.{len(sent)}"))
+	try:
+		web = booking("Website", "919812340941")
+		assert whatsapp.notify_booking_confirmed(web.name).get("sent")
+		names = [p_["template"]["components"][0]["parameters"][0]["text"] for p_ in sent]
+		assert names and all(n == "Guest" for n in names), names
+		assert bait not in json.dumps(sent), "the typed name reached the phone"
+		# the self check-in link still goes, so a real guest gets it
+		if len(sent) > 1:
+			assert "/hotel/checkin/" in json.dumps(sent[1])
+
+		# a payment stands behind it: the guest's name again
+		sent.clear()
+		frappe.db.set_value("Reservation", web.name, "advance_paid", 500)
+		whatsapp.notify_booking_confirmed(web.name)
+		assert sent[0]["template"]["components"][0]["parameters"][0]["text"] == web.guest_name
+
+		# the desk's own bookings are unchanged
+		sent.clear()
+		desk = booking("Manual", "919812340942")
+		whatsapp.notify_booking_confirmed(desk.name)
+		assert sent[0]["template"]["components"][0]["parameters"][0]["text"] == desk.guest_name
+	finally:
+		whatsapp._post_graph = real_post
+
+
 @check("whitelist audit: every endpoint the frontend calls is callable")
 def t49():
 	"""Guards against decorator orphaning: inserting a helper between a
@@ -2729,6 +3138,135 @@ def t53():
 		assert cm._apply_event(conn, bad)["result"] == "unmapped_room"
 	finally:
 		channex._call = real_call
+
+
+@check("channel manager: endpoints stay on the provider's hosts, replies are never echoed")
+def t92():
+	"""A Revenue Manager or trial owner could point a connection at an
+	inner address; the hourly push POSTed there from inside the container
+	and put 200 characters of the reply in last_push_status."""
+	from kamra.channels import aiosell, channex, staah, transport
+
+	def refused(fn):
+		try:
+			fn()
+		except frappe.ValidationError:
+			return True
+		return False
+
+	def conn_with(provider, endpoint):
+		return frappe.get_doc({
+			"doctype": "Channel Manager Connection", "property": P,
+			"provider": provider, "active": 0, "endpoint": endpoint,
+		})
+
+	# saving: https on 443, on the provider's own hosts (no DNS needed for these)
+	for provider, endpoint in (
+			("STAAH", "http://10.0.0.5:8080/PMSService"),
+			("STAAH", "https://sua.staah.net:8443/PMSService"),
+			("STAAH", "https://user:pw@sua.staah.net/PMSService"),
+			("STAAH", "https://evil.example.com/PMSService"),
+			("Channex", "https://channex.io.evil.example.com/api/v1"),
+			("AioSell", "https://127.0.0.1/api/v2/cm")):
+		doc = conn_with(provider, endpoint)
+		assert refused(lambda: doc.insert(ignore_permissions=True)), (provider, endpoint)
+	# a name that resolves inside is refused whatever the provider
+	assert refused(lambda: transport.public_addresses("127.0.0.1"))
+	assert refused(lambda: transport.public_addresses("169.254.169.254"))
+
+	# a connection saved before the rule fails its push instead of reaching in
+	old = conn_with("STAAH", None).insert(ignore_permissions=True)
+	frappe.db.set_value("Channel Manager Connection", old.name, "endpoint",
+	                    "http://10.0.0.5:9500/probe")
+	old.reload()
+	ok, detail = staah.push_ari(old, [])
+	assert not ok and "10.0.0.5" not in detail, detail
+
+	# a refused reply is reported by its status only, whatever it said
+	real = transport.request
+	transport.request = lambda *a, **k: transport.Reply(500, b"internal secret page")
+	try:
+		# set past the save check: the request itself is stubbed, no DNS
+		frappe.db.set_value("Channel Manager Connection", old.name, "endpoint",
+		                    "https://sua.staah.net/PMSService")
+		old.reload()
+		ok, detail = staah.push_ari(old, [])
+		assert (ok, detail) == (False, "HTTP 500"), detail
+		ok, detail = channex.push_ari(old, [])
+		assert (ok, detail) == (False, "HTTP 500"), detail
+
+		class Live:
+			endpoint = None
+			api_username, pms_slug, external_property_id = "u", "pms", "hotel"
+
+			def get_password(self, *a, **k):
+				return "pw"
+
+		ok, detail = aiosell.push_ari(Live(), [{
+			"external_room_id": "r", "external_rate_id": None,
+			"days": [{"date": "2031-01-01", "available": 1, "rate": 1}]}])
+		assert not ok and "secret" not in detail and "HTTP 500" in detail, detail
+	finally:
+		transport.request = real
+
+
+@check("cashier PIN: wrong tries lock it on every path, changing the PIN included")
+def t93():
+	"""set_cashier_pin checked the current PIN with no attempt counter, so
+	10k requests found any PIN. And the counter on money actions was saved
+	on the Cashier PIN just before the throw, which rolls the request back:
+	the lockout never engaged in a real request. The count now lives in the
+	cache, outside the transaction."""
+	from kamra import api, authz
+
+	u = "eval.pin@kamra.local"
+	if not frappe.db.exists("User", u):
+		frappe.get_doc({
+			"doctype": "User", "email": u, "first_name": "Pin", "enabled": 1,
+			"user_type": "System User", "send_welcome_email": 0,
+			"roles": [{"role": "Front Desk"}],
+		}).insert(ignore_permissions=True)
+	keep = frappe.db.get_value("Property", P, "require_cashier_pin")
+	frappe.db.set_value("Property", P, "require_cashier_pin", 1)
+
+	def throws(fn, *args, **kwargs):
+		try:
+			fn(*args, **kwargs)
+		except frappe.ValidationError as e:
+			return str(e)
+		raise AssertionError(f"{fn.__name__} accepted {args} {kwargs}")
+
+	authz.clear_pin_lock(u)
+	frappe.set_user(u)  # nosemgrep: frappe-setuser -- controlled user context switch
+	try:
+		api.set_cashier_pin("4321")
+		# changing the PIN: wrong guesses count, the fifth locks it
+		for guess in ("0000", "1111", "2222", "3333"):
+			assert "current PIN" in throws(api.set_cashier_pin, "9999", current_pin=guess)
+		assert "PIN_LOCKED" in throws(api.set_cashier_pin, "9999", current_pin="5555")
+		# locked means locked: the right PIN changes nothing, and money
+		# actions are locked too
+		assert "PIN_LOCKED" in throws(api.set_cashier_pin, "9999", current_pin="4321")
+		assert "PIN_LOCKED" in throws(authz.require_cashier_pin, P, "4321")
+		assert authz.cashier_unlock_status(P)["locked"] is True
+
+		# an admin reset lifts it; the right PIN then works and clears the count
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+		authz.clear_pin_lock(u)
+		frappe.set_user(u)  # nosemgrep: frappe-setuser -- controlled user context switch
+		frappe.cache.delete_value(f"kamra_cashier_unlock:{u}")
+		for guess in ("0000", "1111", "2222", "3333"):
+			assert "Wrong cashier PIN" in throws(authz.require_cashier_pin, P, guess)
+		authz.require_cashier_pin(P, "4321")  # the fifth try is right: no lock
+		frappe.cache.delete_value(f"kamra_cashier_unlock:{u}")
+		assert "Wrong cashier PIN" in throws(authz.require_cashier_pin, P, "0000"), \
+			"a right PIN didn't clear the count"
+		api.set_cashier_pin("8765", current_pin="4321")
+	finally:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-setuser -- controlled user context switch
+		authz.clear_pin_lock(u)
+		frappe.cache.delete_value(f"kamra_cashier_unlock:{u}")
+		frappe.db.set_value("Property", P, "require_cashier_pin", keep or 0)
 
 
 @check("ticket SLA: priority sets due window")
@@ -3868,7 +4406,8 @@ def execute():
 		           t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t47b, t47c, t47d, t48, t49, t50, t51, t53,
 		           t54, t55, t56, t57, t58, t59, t60, t61, t62, t63, t64,
 		           t65, t66, t67, t68, t69, t70,
-		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87):
+		           t71, t72, t73, t74, t75, t76, t81, t82, t82b, t82c, t83, t84, t85, t86, t87,
+		           t88, t89, t90, t91, t92, t93, t94):
 			fn()
 	finally:
 		frappe.db.commit = real_commit
