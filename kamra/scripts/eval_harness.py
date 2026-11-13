@@ -2124,6 +2124,47 @@ def t90():
 				conf[k] = v
 
 
+@check("folio: an extended or shortened stay keeps the nightly price it was sold at")
+def t91b():
+	"""A stay with a price of its own keeps that price per night when the
+	desk extends or shortens it, so the folio (which bills each night from
+	the stored price) neither gives the extra nights away nor bills the old
+	total for fewer nights. (Rack is 4000 a night, 5% tax - see t1.)"""
+	from kamra.api import amend_stay
+
+	keep = frappe.db.get_value("Property", P, ["cleaning_fee"], as_dict=True)
+	frappe.db.set_value("Property", P, "cleaning_fee", 0)
+	frappe.clear_document_cache("Property", P)
+	try:
+		g = _guest("V7 Extended", "+91 70000 09211")
+		res = frappe.get_doc({
+			"doctype": "Reservation", "property": P, "guest": g,
+			"room_type": RT, "check_in_date": "2031-04-01",
+			"check_out_date": "2031-04-03", "adults": 2, "auto_price": 0,
+			"amount_before_tax": 7000, "tax_amount": 350, "amount_after_tax": 7350,
+		}).insert(ignore_permissions=True)
+		res.db_set("status", "Confirmed")
+
+		amend_stay(res.name, "2031-04-01", "2031-04-05")
+		res.reload()
+		assert float(res.amount_before_tax) == 14000, res.amount_before_tax
+		assert float(res.tax_amount) == 700, res.tax_amount
+		assert float(res.amount_after_tax) == 14700, res.amount_after_tax
+
+		amend_stay(res.name, "2031-04-01", "2031-04-02")
+		res.reload()
+		assert float(res.amount_before_tax) == 3500, res.amount_before_tax
+
+		# amounts edited in the same save are the desk's own price
+		res.check_out_date = "2031-04-03"
+		res.amount_before_tax, res.tax_amount, res.amount_after_tax = 6000, 300, 6300
+		res.save(ignore_permissions=True)
+		assert float(res.amount_before_tax) == 6000, res.amount_before_tax
+	finally:
+		frappe.db.set_value("Property", P, "cleaning_fee", keep.cleaning_fee)
+		frappe.clear_document_cache("Property", P)
+
+
 @check("folio: each night bills the price the booking was sold at - OTA, negotiated, rate plan")
 def t91():
 	"""The night audit and checkout used to post occupancy + season for
